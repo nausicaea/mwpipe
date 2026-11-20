@@ -49,12 +49,42 @@ A Nexus Premium account is required: the API only issues download links to Premi
 Mods hosted outside Nexus are listed at the end of the download step; put those files into
 `$OPENMW_DATA_DIR/Downloads` (any name, they are matched by MD5) and run again.
 
+### Building a collection from a mod list
+
+The reverse direction: turn a list of mod URLs into a collection on your own Nexus account.
+
+```sh
+./mwpipe.sh build-collection - --name "My Morrowind list" < modlist.txt
+./mwpipe.sh build-collection "$OPENMW_DATA_DIR/modlist.txt" --no-upload    # build and inspect only
+./mwpipe.sh build-collection modlist.txt --collection-id 12345             # new revision of a collection
+```
+
+`modlist.txt` has one URL per line, `#` starts a comment. Nexus mod pages (`/morrowind/mods/43931`,
+optionally `?file_id=N` to pin a file) and `nxm://.../mods/ID/files/ID` links resolve through the
+v3 API to the mod's primary file. Any other `https://` URL becomes a "direct" download, which
+the collection installer fetches from that URL. The mod list file must be somewhere the container
+can see (below `$OPENMW_DATA_DIR`), or be piped in on stdin as above.
+
+What happens: every archive is downloaded (cached by MD5), installed into a scratch setup that never
+touches your `openmw.cfg`, and sorted with plox. The collection keeps your list order for the data
+directories (later entries override earlier ones) and the plox result as its load order. The bundle
+(`collection.json` with `loadOrder`, packed as `.7z`) is uploaded and a collection is created from it
+as a **draft** revision; publish it on the website. Files for inspection land in
+`$OPENMW_DATA_DIR/.mwpipe/builds/<name>/out/`: `collection.json`, `collection-data.json` (the API
+request body), the bundle and `load-order.txt`.
+
+Limits: Premium is needed (the mods are downloaded), the bundle must be under 100 MiB, FOMOD
+installers run with their default choices, and mods with no plugins at all are included as they are.
+Direct downloads get the version `unknown`, since a bare URL carries none.
+
 ### Nexus APIs
 
 | Call | API | Why |
 | --- | --- | --- |
 | collection revision and its archive link | GraphQL v2 | v3 has no endpoint that reads collections, only create and edit |
 | mod file download links | REST v3 `mod-file-versions/{id}/download-link` | documented, but badged Experimental |
+| mod name, version and primary file | REST v3 `mods/{id}`, `mod-file-versions/{id}` | used by `build-collection` |
+| upload and create a collection | REST v3 `uploads`, `collections` | used by `build-collection` |
 | Premium check, and download fallback | REST v1 | v1 is used when the v3 link call returns 404, 410 or 5xx |
 
 Downloads are verified by MD5 only. Collection manifests are accepted with either camelCase keys
@@ -148,7 +178,7 @@ python3 -m unittest discover -s tests       # offline, needs neither Docker nor 
 ```
 
 Code map (`src/mwpipe/`): `cli.py` arguments, `settings.py` paths and secrets, `nexus.py` API,
-`archives.py` extraction, `install.py` data folder detection, `fomod.py` FOMOD installer,
+`modlist.py` and `publish.py` mod list to collection, `archives.py` extraction, `install.py` data folder detection, `fomod.py` FOMOD installer,
 `collection.py` collection.json and mod ordering, `openmw_cfg.py` config file, `tools.py`
 external tools, `pipeline.py` the steps.
 

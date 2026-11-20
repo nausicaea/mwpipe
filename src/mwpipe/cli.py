@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 from mwpipe import __version__
 from mwpipe.nexus import NexusClient, parse_collection_ref
 from mwpipe.pipeline import ALL_STEPS, DEFAULT_STEPS, POSTPROCESS_STEPS, Pipeline
+from mwpipe.publish import build_collection
 from mwpipe.settings import Settings, read_api_key
 from mwpipe.util import PipelineError, log
 
@@ -64,6 +66,20 @@ def build_parser() -> argparse.ArgumentParser:
     post = sub.add_parser("postprocess", help=f"only {', '.join(POSTPROCESS_STEPS)} on the existing openmw.cfg")
     post.add_argument("--sort", choices=["auto", "collection", "plox"], default="auto")
     post.add_argument("--enlightened-flames", action="store_true")
+
+    build = sub.add_parser("build-collection", help="turn a list of mod URLs into a Nexus collection and upload it",
+                           description="Downloads the mods, sorts their plugins with plox and uploads the "
+                                       "result as a draft collection on the account of the API key.")
+    build.add_argument("modlist", help="file with one mod URL per line ('#' comments), or - for stdin")
+    build.add_argument("--name", help="collection name, 3-36 characters (default: the mod list's file name)")
+    build.add_argument("--summary", default="", help="short summary, up to 255 characters")
+    build.add_argument("--description", default="")
+    build.add_argument("--game", help="Nexus game domain (default: taken from the URLs)")
+    build.add_argument("--collection-id", help="add a new revision to this collection instead of creating one")
+    build.add_argument("--no-upload", action="store_true", help="build and write the files, but do not upload")
+    build.add_argument("--output-dir", type=Path, metavar="PATH",
+                       help="where collection.json, the bundle and load-order.txt go (default: <state>/builds/<name>/out)")
+    build.add_argument("--allow-missing", action="store_true", help="leave out mods that cannot be resolved")
     return p
 
 
@@ -86,6 +102,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "postprocess":
             Pipeline(settings, sort_mode=args.sort, enlightened_flames=args.enlightened_flames
                      ).run(POSTPROCESS_STEPS, None)
+            return 0
+
+        if args.command == "build-collection":
+            if args.modlist == "-" and args.api_key_stdin:
+                raise PipelineError("--api-key-stdin and a mod list on stdin both read stdin; use a key file.")
+            text = sys.stdin.read() if args.modlist == "-" else Path(args.modlist).read_text(encoding="utf-8")
+            name = args.name or ("collection" if args.modlist == "-" else Path(args.modlist).stem)
+            result = build_collection(
+                settings, client(), text, name=name, summary=args.summary, description=args.description,
+                game=args.game, collection_id=args.collection_id, upload=not args.no_upload,
+                output_dir=args.output_dir, allow_missing=args.allow_missing)
+            log.info("%s", json.dumps(result, indent=2))
             return 0
 
         steps = args.steps or DEFAULT_STEPS + (["clean"] if args.clean else [])

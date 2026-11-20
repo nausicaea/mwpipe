@@ -4,6 +4,8 @@
   mod file downloads  REST v3      GET /games/{game}/mod-file-versions/{id}/download-link
                                    (badged Experimental; falls back to v1 if it errors)
   Premium check       REST v1      /users/validate.json, v3 has no user endpoint
+  mod lookup          REST v3      GET /games/{game}/mods/{id} and /games/{game}/mod-file-versions/{id}
+  publishing          REST v3      /uploads, /uploads/{id}/finalise, /collections[/{id}/revisions]
 
 Download links are only issued to Premium accounts, so mwpipe requires Premium.
 The API key is only ever sent to api.nexusmods.com, never to the CDN hosts that serve files.
@@ -11,6 +13,7 @@ The API key is only ever sent to api.nexusmods.com, never to the CDN hosts that 
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -23,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mwpipe import __version__
-from mwpipe.util import PipelineError, log
+from mwpipe.util import PipelineError, log, md5sum
 
 API_HOST = "api.nexusmods.com"
 API_ROOT = f"https://{API_HOST}"
@@ -31,6 +34,7 @@ API_V1 = f"{API_ROOT}/v1"
 API_V3 = f"{API_ROOT}/v3"
 GRAPHQL_URL = f"{API_ROOT}/v2/graphql"
 USER_AGENT = f"mwpipe/{__version__}"
+MULTIPART_LIMIT = 100 * 1024 * 1024  # larger files need the multipart upload API
 
 
 class ApiError(PipelineError):
@@ -75,7 +79,8 @@ class NexusClient:
         self._user: dict | None = None
 
     # -- low level -----------------------------------------------------------------------------
-    def _api(self, url: str, body: dict | None = None, retries: int = 3) -> dict | list:
+    def _api(self, url: str, body: dict | None = None, retries: int = 3,
+             method: str | None = None) -> dict | list:
         if urllib.parse.urlsplit(url).hostname != API_HOST:
             raise PipelineError(f"Refusing to send the API key to {url}")
         headers = {"apikey": self._key, "Accept": "application/json", "User-Agent": USER_AGENT,
@@ -84,13 +89,14 @@ class NexusClient:
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url, data=data, headers=headers)
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         for attempt in range(retries):
             try:
                 with urllib.request.urlopen(request, timeout=60) as resp:
-                    return json.load(resp)
+                    raw = resp.read()
+                    return json.loads(raw) if raw.strip() else {}
             except urllib.error.HTTPError as err:
-                detail = err.read().decode(errors="replace")[:300]
+                detail = err.read().decode(errors="replace")[:1500]
                 if err.code == 429 and attempt + 1 < retries:
                     time.sleep(30 * (attempt + 1))
                     continue
@@ -147,6 +153,57 @@ class NexusClient:
         if not mirrors:
             raise PipelineError(f"No download mirrors for mod {mod_id} file {file_id}.")
         return mirrors[0]["URI"]
+
+    # -- mod lookup (v3) -------------------------------------------------------------------------
+    def mod(self, game: str, mod_id: int) -> dict:
+        """Mod page data. `main_file_version` is the primary (else newest) cleared main file."""
+        return self._api(f"{API_V3}/games/{game}/mods/{mod_id}")["data"]
+
+    def file_version(self, game: str, file_id: int) -> dict:
+        return self._api(f"{API_V3}/games/{game}/mod-file-versions/{file_id}")["data"]
+
+    # -- publishing (v3) -------------------------------------------------------------------------
+    def upload_file(self, path: Path, filename: str) -> str:
+        """Single-part upload session -> PUT to the presigned URL -> finalise. Returns the upload id."""
+        size = path.stat().st_size
+        if size >= MULTIPART_LIMIT:
+            raise PipelineError(f"{path.name} is {size >> 20} MiB; only single-part uploads (< 100 MiB) are supported.")
+        digest = md5sum(path)
+        session = self._api(f"{API_V3}/uploads", {"size_bytes": size, "filename": filename, "md5": digest})["data"]
+        put_presigned(session["presigned_url"], path, filename, digest)
+        state = self._api(f"{API_V3}/uploads/{session['id']}/finalise", {}, method="POST")["data"]["state"]
+        for _ in range(30):
+            if state == "available":
+                return session["id"]
+            time.sleep(2)
+            state = self._api(f"{API_V3}/uploads/{session['id']}")["data"]["state"]
+        raise PipelineError(f"Upload {session['id']} is still {state!r} after 60 s; try again later.")
+
+    def create_collection(self, upload_id: str, collection_data: dict, collection_id: str | None = None) -> dict:
+        """New collection, or a new revision of `collection_id`. Both start as a draft revision."""
+        url = f"{API_V3}/collections" + (f"/{collection_id}/revisions" if collection_id else "")
+        return self._api(url, {"upload_id": upload_id, "collection_data": collection_data}, method="POST")["data"]
+
+
+def put_presigned(url: str, path: Path, filename: str, md5_hex: str) -> None:
+    """PUT a file to a presigned storage URL. The API key is deliberately not sent here.
+
+    Content-Disposition and Content-MD5 are part of the URL signature, so they must match the
+    values given when the upload session was created.
+    """
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise PipelineError("Refusing a non-HTTPS upload URL.")
+    quoted = filename.replace("\\", "_").replace('"', "_")
+    headers = {"User-Agent": USER_AGENT, "Content-Type": "application/octet-stream",
+               "Content-Length": str(path.stat().st_size),
+               "Content-Disposition": f'attachment; filename="{quoted}"',
+               "Content-MD5": base64.b64encode(bytes.fromhex(md5_hex)).decode()}
+    try:
+        with path.open("rb") as fh:
+            urllib.request.urlopen(urllib.request.Request(url, data=fh, headers=headers, method="PUT"),
+                                   timeout=300).read()
+    except urllib.error.HTTPError as err:
+        raise PipelineError(f"Upload to storage failed ({err.code}): {err.read().decode(errors='replace')[:300]}") from None
 
 
 def download(url: str, dest: Path, md5: str | None = None) -> Path:
