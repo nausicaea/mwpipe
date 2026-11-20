@@ -10,7 +10,11 @@ mwpipe side, in the usual per-user locations:
 
   cache   downloads/ (archives), md5-cache.json, plox/ (mlox rules), scratch/    safe to delete
   state   current collection, install manifest, openmw.cfg backups, builds/       delete = reinstall
-  config  overrides.json, lumenaire.toml                                          yours to edit
+  config  overrides.json, lumenaire.toml                                          yours to edit, never written
+
+Outside Docker these are the per-user directories (XDG on Linux, ~/Library on macOS). In Docker the
+image sets MWPIPE_{CACHE,STATE,CONFIG}_DIR to /cache, /state (named volumes) and /config (read-only
+files from compose.yaml's `configs:`).
 """
 
 from __future__ import annotations

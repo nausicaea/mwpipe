@@ -48,6 +48,8 @@ in `.env`: the script then pulls that image instead. Run `./mwpipe.sh --help` an
 A Nexus Premium account is required: the API only issues download links to Premium accounts.
 Mods hosted outside Nexus are listed at the end of the download step; put those files into
 the downloads cache (see Layout; any file name works, they are matched by MD5) and run again.
+In Docker the cache is a volume, so either set `DOWNLOADS_DIR` in `.env` to a host directory (below
+`$OPENMW_DATA_DIR`) or copy the file in with `docker run`/`docker cp`.
 
 ### Building a collection from a mod list
 
@@ -55,7 +57,8 @@ The reverse direction: turn a list of mod URLs into a collection on your own Nex
 
 ```sh
 ./mwpipe.sh build-collection - --name "My Morrowind list" < modlist.txt
-./mwpipe.sh build-collection "$OPENMW_DATA_DIR/modlist.txt" --no-upload    # build and inspect only
+./mwpipe.sh build-collection "$OPENMW_DATA_DIR/modlist.txt" --no-upload \
+    --output-dir "$OPENMW_DATA_DIR/collection-out"                          # build and inspect only
 ./mwpipe.sh build-collection modlist.txt --collection-id 12345             # new revision of a collection
 ```
 
@@ -70,7 +73,8 @@ touches your `openmw.cfg`, and sorted with plox. The collection keeps your list 
 directories (later entries override earlier ones) and the plox result as its load order. The bundle
 (`collection.json` with `loadOrder`, packed as `.7z`) is uploaded and a collection is created from it
 as a **draft** revision; publish it on the website. Files for inspection land in
-`<state dir>/builds/<name>/out/`: `collection.json`, `collection-data.json` (the API
+`--output-dir` (default: `builds/<name>/out/` in the state volume, which the host cannot browse, so pass
+`--output-dir` below `$OPENMW_DATA_DIR` to look at them): `collection.json`, `collection-data.json` (the API
 request body), the bundle and `load-order.txt`.
 
 Limits: Premium is needed (the mods are downloaded), the bundle must be under 100 MiB, FOMOD
@@ -108,7 +112,7 @@ Generated plugins are always appended last.
 There is deliberately no flag that takes the key itself, since command lines end up in shell
 history and process lists. The key is only sent to `api.nexusmods.com`, never to download mirrors.
 The container runs as your user with a read-only root filesystem, no capabilities and only the
-mounted folders (OpenMW's two, plus mwpipe's cache, state and config) writable. Archive contents are treated as untrusted: symlinks are removed
+mounted folders (OpenMW's two, plus the cache and state volumes) writable, and the config files read-only. Archive contents are treated as untrusted: symlinks are removed
 and entries that escape the extraction folder abort the install.
 
 Paths are mounted at the same location inside the container as on the host, so the paths written
@@ -126,40 +130,35 @@ $OPENMW_DATA_DIR/
   Generated/                   delta merge, groundcover, light fixes (last data= entry)
 ```
 
-mwpipe's, in per-user directories (Linux: XDG; macOS: `~/Library`). `mwpipe.sh` creates them and
-mounts them into the container as `/cache`, `/state` and `/config`:
+mwpipe's own files, in Docker:
 
-| | Linux | macOS | Holds |
-| --- | --- | --- | --- |
-| cache | `~/.cache/mwpipe` | `~/Library/Caches/mwpipe` | `downloads/` (archive cache, also where manual downloads go), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
-| state | `~/.local/state/mwpipe` | `~/Library/Application Support/mwpipe` | `current.json`, `collections/`, `manifest.json`, `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
-| config | `~/.config/mwpipe` | `~/Library/Application Support/mwpipe` | `overrides.json`, `lumenaire.toml`. Yours to edit. |
+| | Where | Holds |
+| --- | --- | --- |
+| cache | named volume `mwpipe_cache`, `/cache` | `downloads/` (archive cache), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
+| state | named volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
+| config | `./config/overrides.json` and `./config/lumenaire.toml`, mounted read-only on `/config` by compose's `configs:` | Yours to edit; mwpipe never writes them. Without a `lumenaire.toml` the packaged defaults are used. |
 
-Override the host directories with `MWPIPE_CACHE_HOME`, `MWPIPE_STATE_HOME` and `MWPIPE_CONFIG_HOME`
-in your shell (outside Docker: `MWPIPE_CACHE_DIR` etc. or `--cache-dir` etc.). `--downloads-dir`
-moves just the archives.
+The volumes survive `run --rm`; `docker compose down -v` deletes them, `docker volume ls` shows them.
+`DOWNLOADS_DIR` in `.env` moves just the archives to a host directory.
 
-Upgrading from the earlier layout (`Downloads/`, `.mwpipe/` and `mwpipe-overrides.json` inside the data
-directory), with `$C`, `$S` and `$G` standing for the cache, state and config directories above:
+Outside Docker (`pip install .`) the same three directories are per-user: XDG directories on Linux
+(`~/.cache/mwpipe`, `~/.local/state/mwpipe`, `~/.config/mwpipe`), and `~/Library/Caches/mwpipe` and
+`~/Library/Application Support/mwpipe` on macOS. Override with `--cache-dir`, `--state-dir`, `--config-dir`
+or `MWPIPE_CACHE_DIR`, `MWPIPE_STATE_DIR`, `MWPIPE_CONFIG_DIR`.
 
-```sh
-mkdir -p "$C" "$S" "$G"
-mv "$OPENMW_DATA_DIR/Downloads" "$C/downloads"
-mv "$OPENMW_DATA_DIR/.mwpipe/md5-cache.json" "$C/"
-mv "$OPENMW_DATA_DIR/.mwpipe/lumenaire.toml" "$G/"
-mv "$OPENMW_DATA_DIR/mwpipe-overrides.json" "$G/overrides.json"
-mv "$OPENMW_DATA_DIR/.mwpipe/manifest.json" "$OPENMW_DATA_DIR/.mwpipe/backups" "$S/"
-rm -r "$OPENMW_DATA_DIR/.mwpipe"                 # the rest is recreated; then run the collection URL again
-```
+Upgrading from the first layout (`Downloads/`, `.mwpipe/` and `mwpipe-overrides.json` in the data
+directory): set `DOWNLOADS_DIR` in `.env` to the old `Downloads` folder, copy the overrides file to
+`config/overrides.json` and your `lumenaire.toml`, if you edited it, to `config/`, then delete `.mwpipe/`.
+The installed mods are re-extracted once.
 
 `openmw.cfg` keeps all lines mwpipe does not manage (`encoding`, `fallback=`, comments, ...).
 `data=`, `fallback-archive=`, `content=` and `groundcover=` are rewritten as one block at the end.
-A timestamped backup goes to `<state dir>/backups/` before every write. If the file has no
+A timestamped backup goes to `backups/` in the state volume before every write. If the file has no
 `fallback=` lines, they are imported from `Morrowind.ini` the same way `openmw-iniimporter` does.
 
 ## Overrides
 
-`<config dir>/overrides.json` covers what a collection can't express. Mods are keyed by
+`config/overrides.json` covers what a collection can't express. Mods are keyed by
 `<modId>-<fileId>` or by their name in the collection.
 
 ```json
@@ -188,7 +187,7 @@ A timestamped backup goes to `<state dir>/backups/` before every write. If the f
 | build args `DELTA_PLUGIN_VERSION`, `PLOX_VERSION`, `GOCOVERIFY_VERSION`, `LUMENAIRE_VERSION`, `TES3CMD_COMMIT` | tool versions, maintained by Renovate |
 | build args `GOCOVERIFY_SHA256`, `LUMENAIRE_SHA256` | pin the Go tools to an exact build (default: verify against the published checksum) |
 
-Light settings live in `<config dir>/lumenaire.toml`, created on first run from the
+Light settings come from `config/lumenaire.toml`, which starts as a copy of the
 bundled defaults (your former waza values: flicker off, radius 1.2 / 1.1).
 
 ## Development

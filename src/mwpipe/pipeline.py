@@ -307,10 +307,9 @@ class Pipeline:
             log.warning("enable groundcover: add 'enabled = true' under [Groundcover] in %s", settings_cfg)
 
     def lightfix(self) -> None:
-        settings = self.s.config_dir / "lumenaire.toml"  # editable copy of the bundled defaults
-        if not settings.exists():
-            settings.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(LUMENAIRE_DEFAULTS, settings)
+        settings = self.s.config_dir / "lumenaire.toml"  # yours, if you made one (read-only in Docker)
+        if not settings.is_file():
+            settings = LUMENAIRE_DEFAULTS
         tools.lumenaire(self.s.openmw_cfg, self.s.generated_dir, settings,
                         self.enlightened_flames, self.s.dry_run)
         self._register([tools.LIGHTS_OUTPUT])

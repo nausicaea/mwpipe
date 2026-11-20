@@ -204,7 +204,7 @@ class TestPipeline(TempDir):
             pipe.run(post, None)  # idempotent re-run
         self.assertNotIn("plox", calls)  # the collection's load order is trusted by default
         self.assertEqual(calls.count("lumenaire"), 2)
-        self.assertTrue((s.config_dir / "lumenaire.toml").is_file())
+        self.assertFalse((s.config_dir / "lumenaire.toml").exists(), "config is never written")
         cfg = OpenMWConfig.load(s.openmw_cfg)
         self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp", "scripts.omwscripts",
                                        tools.DELTA_OUTPUT, tools.GROUNDCOVER_DELETED, tools.LIGHTS_OUTPUT])
@@ -244,6 +244,36 @@ class TestNexusClient(unittest.TestCase):
     def test_refuses_foreign_hosts(self):
         with self.assertRaises(PipelineError):
             NexusClient("key")._api("https://evil.example/x")
+
+
+class TestConfigFiles(TempDir):
+    def lightfix_settings(self, create_config):
+        from mwpipe.pipeline import LUMENAIRE_DEFAULTS
+        args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
+                               morrowind_data=None, mods_dir=None, downloads_dir=None, generated_dir=None,
+                               cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
+        s = Settings.from_args(args)
+        mine = touch(s.config_dir / "lumenaire.toml", b"# mine") if create_config else None
+        pipe = Pipeline(s)
+        with mock.patch.object(tools, "lumenaire") as lum, mock.patch.object(Pipeline, "_register"):
+            pipe.lightfix()
+        return lum.call_args[0][2], mine, LUMENAIRE_DEFAULTS
+
+    def test_user_config_wins(self):
+        used, mine, _ = self.lightfix_settings(True)
+        self.assertEqual(used, mine)
+
+    def test_bundled_defaults_without_config(self):
+        used, _, defaults = self.lightfix_settings(False)
+        self.assertEqual(used, defaults)
+
+    def test_shipped_config_matches_bundled_defaults(self):
+        """./config/lumenaire.toml (mounted by compose.yaml) is a copy of the packaged defaults."""
+        from mwpipe.pipeline import LUMENAIRE_DEFAULTS
+        shipped = Path(__file__).resolve().parents[1] / "config"
+        self.assertEqual((shipped / "lumenaire.toml").read_bytes(), LUMENAIRE_DEFAULTS.read_bytes())
+        self.assertEqual(json.loads((shipped / "overrides.json").read_text()), {})
 
 
 class TestDirs(TempDir):

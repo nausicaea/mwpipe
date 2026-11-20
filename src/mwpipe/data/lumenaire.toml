@@ -1,4 +1,4 @@
-# Lumenaire settings, copied to <config dir>/lumenaire.toml on first run; edit that copy.
+# Lumenaire settings, used unless <config dir>/lumenaire.toml exists (Docker: ./config/lumenaire.toml, a copy of this file).
 # Values carried over from the previous waza_lightfixes.cfg. Docs: https://modding-openmw.gitlab.io/lumenaire/
 disable_flickering = true
 

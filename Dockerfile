@@ -51,10 +51,14 @@ COPY pyproject.toml README.md /build/
 COPY src /build/src
 RUN pip install --no-cache-dir /build && rm -rf /build
 
+# mwpipe's own directories. compose.yaml mounts named volumes on /cache and /state (a new volume copies
+# the mode of the image directory, so 1777 lets any UID from compose's `user:` write to it) and the
+# files in ./config on /config, read-only.
+RUN mkdir -m 1777 /cache /state && mkdir /config
+
 # Unprivileged user; compose.yaml maps it to your host UID/GID.
 RUN adduser -D -u 1000 modder
 USER modder
-# mwpipe's own directories; compose.yaml bind-mounts the host's cache/state/config directories here.
 ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp \
     MWPIPE_CACHE_DIR=/cache MWPIPE_STATE_DIR=/state MWPIPE_CONFIG_DIR=/config
 ENTRYPOINT ["mwpipe"]
