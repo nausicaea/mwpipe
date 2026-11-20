@@ -169,7 +169,8 @@ class TestPipeline(TempDir):
             "mods": [{"name": "Mod A", "source": {"type": "nexus", "modId": 1, "fileId": 2,
                                                    "md5": md5sum(archive)}}],
             "loadOrder": [{"id": "morrowind.esm", "name": "Morrowind.esm", "enabled": True},
-                          {"id": "moda.esp", "name": "ModA.esp", "enabled": True}],
+                          {"id": "moda.esp", "name": "ModA.esp", "enabled": True},
+                          {"id": "scripts.omwscripts", "name": "scripts.omwscripts", "enabled": False}],
         }).encode())
         (s.state_dir / "current.json").write_text(json.dumps(
             {"slug": "test", "game": "morrowind", "revision": 1, "name": "Test", "dir": str(coll_dir)}))
@@ -177,7 +178,8 @@ class TestPipeline(TempDir):
         pipe = Pipeline(s)
         pipe.run(["download", "install", "configure"], None)
         cfg = OpenMWConfig.load(s.openmw_cfg)
-        self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp", "scripts.omwscripts"])
+        # the collection lists scripts.omwscripts as disabled, so it is not appended like other Lua plugins
+        self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp"])
         self.assertEqual(cfg.archives, ["Morrowind.bsa", "ModA.bsa"])
         self.assertEqual(cfg.data[0], s.morrowind_data)
         self.assertEqual(cfg.data[-1], s.generated_dir)
@@ -206,7 +208,7 @@ class TestPipeline(TempDir):
         self.assertEqual(calls.count("lumenaire"), 2)
         self.assertFalse((s.config_dir / "lumenaire.toml").exists(), "config is never written")
         cfg = OpenMWConfig.load(s.openmw_cfg)
-        self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp", "scripts.omwscripts",
+        self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp",
                                        tools.DELTA_OUTPUT, tools.GROUNDCOVER_DELETED, tools.LIGHTS_OUTPUT])
         self.assertEqual(cfg.groundcover, [tools.GROUNDCOVER_PLUGIN])
 
@@ -215,7 +217,7 @@ class TestPipeline(TempDir):
             Pipeline(s, sort_mode="plox").run(post, None)
         self.assertIn("plox", calls)
         cfg = OpenMWConfig.load(s.openmw_cfg)
-        self.assertEqual(cfg.content[0], "scripts.omwscripts")
+        self.assertEqual(cfg.content[0], "ModA.esp")
         self.assertEqual(cfg.content[-3:], [tools.DELTA_OUTPUT, tools.GROUNDCOVER_DELETED, tools.LIGHTS_OUTPUT])
 
 

@@ -30,10 +30,17 @@ https://gitlab.com/modding-openmw/some-tool/-/package_files/99/download
 
 class TestModList(unittest.TestCase):
     def test_parse(self):
-        entries = parse_mod_list(LIST)  # the repeated mod 1 line is dropped
+        entries = parse_mod_list(LIST).entries  # the repeated mod 1 line is dropped
         self.assertEqual([(e.game, e.mod_id, e.file_id) for e in entries],
                          [("morrowind", 1, None), ("morrowind", 2, 22), ("morrowind", 3, 33), (None, None, None)])
         self.assertFalse(entries[-1].is_nexus)
+
+    def test_disable_lines(self):
+        parsed = parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n- k_weather (louder sounds).esp  # either/or\n")
+        self.assertEqual(parsed.disabled, ["k_weather (louder sounds).esp"])
+        self.assertEqual(len(parsed.entries), 1)
+        with self.assertRaises(PipelineError):
+            parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n-\n")
 
     def test_all_errors_reported(self):
         with self.assertRaises(PipelineError) as ctx:
@@ -143,6 +150,28 @@ class TestBuildCollection(unittest.TestCase):
         coll = Collection.load(out / "collection.json", {}, include_optional=False)
         self.assertEqual(coll.plugin_order(), order)
         self.assertEqual([m.key for m in coll.mods], ["1-10", "2-20"])
+
+    def test_disabled_plugin_is_left_out_everywhere(self):
+        def two_plugins(url, dest, md5=None):  # one mod shipping either/or plugins
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("Data Files/a.esp", "a")
+                zf.writestr("Data Files/a (louder).esp", "b")
+            return dest
+        text = "https://www.nexusmods.com/morrowind/mods/1\n- a (louder).esp\n- typo.esp\n"
+        seen = []
+        with mock.patch.object(publish, "download", side_effect=two_plugins), \
+                mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: seen.append(cfg.read_text())):
+            client = FakeClient()
+            with self.assertLogs("mwpipe", "WARNING") as logs:
+                result = publish.build_collection(self.s, client, text, name="Either Or", upload=False)
+        self.assertIn("a.esp", seen[0])
+        self.assertNotIn("louder", seen[0])  # plox never saw the alternative, so it reports no conflict
+        self.assertTrue(any("typo.esp" in line for line in logs.output))
+        out = Path(result["output_dir"])
+        self.assertEqual((out / "load-order.txt").read_text().split("\n")[:-1], ["a.esp"])
+        coll = Collection.load(out / "collection.json", {}, include_optional=False)
+        self.assertEqual(coll.plugin_order(), ["a.esp"])
+        self.assertIn("a (louder).esp", coll.disabled_plugins())
 
     def test_no_upload_and_new_revision(self):
         text = "https://www.nexusmods.com/morrowind/mods/1\n"

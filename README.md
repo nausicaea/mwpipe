@@ -65,7 +65,11 @@ The reverse direction: turn a list of mod URLs into a collection on your own Nex
 `modlist.txt` has one URL per line, `#` starts a comment. Nexus mod pages (`/morrowind/mods/43931`,
 optionally `?file_id=N` to pin a file) and `nxm://.../mods/ID/files/ID` links resolve through the
 v3 API to the mod's primary file. Any other `https://` URL becomes a "direct" download, which
-the collection installer fetches from that URL. The mod list file must be somewhere the container
+the collection installer fetches from that URL.
+A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
+plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
+sounds).esp` to the list, run again, and the conflict is gone from the sort and from the collection
+(the plugin is stored as disabled, which `mwpipe run` honors). The mod list file must be somewhere the container
 can see (below `$OPENMW_DATA_DIR`), or be piped in on stdin as above.
 
 What happens: every archive is downloaded (cached by MD5), installed into a scratch setup that never
@@ -79,6 +83,8 @@ request body), the bundle and `load-order.txt`.
 
 Limits: Premium is needed (the mods are downloaded), the bundle must be under 100 MiB, FOMOD
 installers run with their default choices, and mods with no plugins at all are included as they are.
+An archive with several alternative data folders ("adding all" warnings in the log) is installed with all
+of them, later ones overriding earlier ones; the v3 manifest has no field for picking one.
 Direct downloads get the version `unknown`, since a bare URL carries none.
 
 ### Nexus APIs

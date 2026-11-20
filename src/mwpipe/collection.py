@@ -135,6 +135,10 @@ class Collection:
             ordered += stuck
         return [mods[i] for i in ordered]
 
+    def disabled_plugins(self) -> set[str]:
+        """Lower-cased names the author listed as disabled (e.g. either/or plugins of one mod)."""
+        return {(e.get("name") or e.get("id") or "").lower() for e in self.load_order if not e.get("enabled", True)}
+
     def plugin_order(self) -> list[str] | None:
         """Enabled plugins in the author's order, or None if the collection has no load order."""
         if not self.load_order:

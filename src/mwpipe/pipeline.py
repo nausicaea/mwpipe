@@ -222,8 +222,11 @@ class Pipeline:
 
         available = _plugins_by_name(cfg.data[:-1])
         groundcover = {g.lower() for g in ov.get("groundcover", [])}
+        collection = self.collection() if self.current_file.exists() else None
         disabled = {d.lower() for d in ov.get("disable", [])} | groundcover
-        order = self.collection().plugin_order() if self.current_file.exists() else None
+        if collection:
+            disabled |= collection.disabled_plugins()
+        order = collection.plugin_order() if collection else None
         content = [m for m in BASE_MASTERS if m.lower() in available]
         if order is None:  # no author load order: masters first, then data order (plox refines it)
             is_master = lambda p: p.suffix.lower() in (".esm", ".omwgame")  # noqa: E731

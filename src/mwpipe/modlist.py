@@ -4,6 +4,9 @@
   https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1  that exact file
   nxm://morrowind/mods/43931/files/1                                  same, as an nxm link
   https://gitlab.com/group/project/-/package_files/1/download         any other HTTPS file ("direct")
+  - k_weather (louder sounds).esp                                    leave this plugin out of the load order
+
+A mod that ships either/or plugins would otherwise enable all of them, which plox reports as a [CONFLICT].
 """
 
 from __future__ import annotations
@@ -16,6 +19,12 @@ from mwpipe.util import PipelineError, log
 
 NEXUS_MOD = re.compile(r"^/(?:games/)?(?P<game>[a-z0-9]+)/mods/(?P<mod>\d+)", re.I)
 NXM_MOD = re.compile(r"^/mods/(?P<mod>\d+)(?:/files/(?P<file>\d+))?", re.I)
+
+
+@dataclass
+class ModList:
+    entries: list["ModEntry"]
+    disabled: list[str]   # plugin file names from "- name" lines
 
 
 @dataclass(frozen=True)
@@ -49,14 +58,21 @@ def parse_entry(line: str) -> ModEntry:
     raise PipelineError(f"unsupported URL (need https:// or nxm://): {url}")
 
 
-def parse_mod_list(text: str) -> list[ModEntry]:
+def parse_mod_list(text: str) -> ModList:
     """All entries in order. Duplicates are dropped with a warning; bad lines are all reported at once."""
     entries: list[ModEntry] = []
+    disabled: list[str] = []
     errors: list[str] = []
     seen: set = set()
     for number, raw in enumerate(text.splitlines(), 1):
         line = re.sub(r"(^|\s)#.*$", "", raw).strip()
         if not line:
+            continue
+        if line.startswith("-"):
+            if name := line[1:].strip():
+                disabled.append(name)
+            else:
+                errors.append(f"line {number}: '-' needs a plugin file name")
             continue
         try:
             entry = parse_entry(line)
@@ -76,4 +92,4 @@ def parse_mod_list(text: str) -> list[ModEntry]:
     games = {e.game for e in entries if e.is_nexus}
     if len(games) > 1:
         raise PipelineError(f"A collection belongs to one game, but the list mixes: {', '.join(sorted(games))}")
-    return entries
+    return ModList(entries, disabled)

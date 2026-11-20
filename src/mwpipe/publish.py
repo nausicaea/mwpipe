@@ -24,7 +24,7 @@ from pathlib import Path
 
 from mwpipe.modlist import ModEntry, parse_mod_list
 from mwpipe.nexus import NexusClient, download, filename_from_url
-from mwpipe.pipeline import BASE_MASTERS, Pipeline
+from mwpipe.pipeline import BASE_MASTERS, Pipeline, _plugins_by_name
 from mwpipe.settings import Settings
 from mwpipe.util import PipelineError, load_json, log, save_json
 
@@ -150,7 +150,8 @@ def v3_manifest(info: dict, mods: list[ListedMod], game: str) -> dict:
     return {"info": {k: v for k, v in info.items() if v}, "mods": entries}
 
 
-def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: list[str]) -> dict:
+def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: list[str],
+                    disabled: list[str] = ()) -> dict:
     """collection.json as stored inside a collection bundle (camelCase, with the plox load order).
 
     This is the shape `mwpipe run` reads back: with a loadOrder present it keeps the order as is.
@@ -168,7 +169,8 @@ def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: li
         entries.append({"name": m.name, "version": m.version, "optional": False, "domainName": game,
                         "author": m.author or "", "source": source})
     return {"info": {camel[k]: v for k, v in info.items() if v}, "mods": entries, "modRules": [],
-            "loadOrder": [{"id": n, "name": n, "enabled": True} for n in load_order]}
+            "loadOrder": [{"id": n, "name": n, "enabled": True} for n in load_order]
+                         + [{"id": n, "name": n, "enabled": False} for n in disabled]}
 
 
 def make_bundle(out_dir: Path) -> Path:
@@ -197,7 +199,8 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
         raise PipelineError(f"The collection name must be {NAME_LIMITS[0]}-{NAME_LIMITS[1]} characters: {name!r}")
     if len(summary) > SUMMARY_LIMIT:
         raise PipelineError(f"The summary is limited to {SUMMARY_LIMIT} characters.")
-    entries = parse_mod_list(modlist)
+    parsed = parse_mod_list(modlist)
+    entries = parsed.entries
     game = game or next((e.game for e in entries if e.is_nexus), DEFAULT_GAME)
     client.require_premium()  # downloads need it; fail before doing any work
     mods = resolve(client, entries, allow_missing)
@@ -208,8 +211,10 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     build_dir = settings.state_dir / "builds" / slug
     out_dir = output_dir or build_dir / "out"
     # A private pipeline: own state and openmw.cfg, so the user's real setup is left alone.
+    build_dir.mkdir(parents=True, exist_ok=True)
+    save_json(build_dir / "overrides.json", {"disable": parsed.disabled})  # your own overrides.json is not used
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
-                                  overrides_file=build_dir / "no-overrides.json", dry_run=False)
+                                  overrides_file=build_dir / "overrides.json", dry_run=False)
     pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox")
     scratch.ensure_dirs()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -225,6 +230,10 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
                                   "dir": str(draft_dir.relative_to(build_dir))})
     log.info("== install, configure, sort (plox) ==")
     pipe.run(["install", "configure", "sort"], None)
+    present = _plugins_by_name(pipe.load_cfg().data)
+    for name in parsed.disabled:
+        if name.lower() not in present:
+            log.warning("'- %s' matches no plugin of the listed mods (check the spelling)", name)
     base = {m.lower() for m in BASE_MASTERS}
     load_order = [c for c in pipe.load_cfg().content if c.lower() not in base]
     log.info("plox load order: %d plugins", len(load_order))
@@ -239,11 +248,11 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     manifest = v3_manifest(info, mods, game)
     collection_data = {"adult_content": any(m.adult for m in mods), "collection_manifest": manifest,
                        "collection_schema_id": COLLECTION_SCHEMA_VORTEX}
-    save_json(out_dir / "collection.json", vortex_manifest(info, mods, game, load_order))
+    save_json(out_dir / "collection.json", vortex_manifest(info, mods, game, load_order, parsed.disabled))
     save_json(out_dir / "collection-data.json", collection_data)
     (out_dir / "load-order.txt").write_text("\n".join(load_order) + "\n", encoding="utf-8")
     bundle = make_bundle(out_dir)
-    result = {"mods": len(mods), "plugins": len(load_order), "bundle": str(bundle), "output_dir": str(out_dir)}
+    result = {"mods": len(mods), "plugins": len(load_order), "disabled": parsed.disabled, "bundle": str(bundle), "output_dir": str(out_dir)}
     if not upload:
         log.info("--no-upload: nothing was sent. Files are in %s", out_dir)
         return result
