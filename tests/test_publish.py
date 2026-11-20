@@ -92,7 +92,8 @@ class TestBuildCollection(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
                                morrowind_data=None, mods_dir=None, downloads_dir=None,
-                               generated_dir=None, dry_run=False)
+                               generated_dir=None, cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
         self.s = Settings.from_args(args)
         (self.s.morrowind_data).mkdir(parents=True)
         (self.s.morrowind_data / "Morrowind.esm").write_bytes(b"x")

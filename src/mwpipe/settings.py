@@ -3,6 +3,14 @@
 Precedence for each value: command-line flag > environment variable > default derived from
 OPENMW_DATA_DIR / OPENMW_CONFIG_DIR. Paths are used verbatim inside openmw.cfg, so the container
 must see them at the same location as the host (compose.yaml mounts them 1:1).
+
+OpenMW's files and mwpipe's own files are kept apart. OpenMW side (OPENMW_DATA_DIR): the base game,
+extracted mods (ModData/) and generated plugins (Generated/), because openmw.cfg points at them.
+mwpipe side, in the usual per-user locations:
+
+  cache   downloads/ (archives), md5-cache.json, plox/ (mlox rules), scratch/    safe to delete
+  state   current collection, install manifest, openmw.cfg backups, builds/       delete = reinstall
+  config  overrides.json, lumenaire.toml                                          yours to edit
 """
 
 from __future__ import annotations
@@ -16,11 +24,25 @@ from pathlib import Path
 from mwpipe.util import PipelineError
 
 SECRET_FILE = Path("/run/secrets/nexus_api_key")
+APP = "mwpipe"
 
 
 def env_path(name: str) -> Path | None:
     value = os.environ.get(name, "").strip()
     return Path(value).expanduser() if value else None
+
+
+def default_dirs() -> tuple[Path, Path, Path]:
+    """(cache, state, config) directories: XDG on Linux, ~/Library on macOS (as platformdirs does)."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        support = home / "Library" / "Application Support" / APP
+        return home / "Library" / "Caches" / APP, support, support
+
+    def xdg(var: str, fallback: str) -> Path:
+        value = os.environ.get(var, "")
+        return (Path(value) if os.path.isabs(value) else home / fallback) / APP  # XDG: must be absolute
+    return xdg("XDG_CACHE_HOME", ".cache"), xdg("XDG_STATE_HOME", ".local/state"), xdg("XDG_CONFIG_HOME", ".config")
 
 
 @dataclass
@@ -30,9 +52,11 @@ class Settings:
     morrowind_data: Path      # vanilla "Data Files" (Morrowind.esm, Morrowind.bsa, ...)
     morrowind_ini: Path       # used to import fallback= values when openmw.cfg has none
     mods_dir: Path            # extracted mods, one directory per mod
-    downloads_dir: Path       # archive cache; drop manually downloaded files here
     generated_dir: Path       # delta merge, groundcover, light fixes
-    state_dir: Path           # collection.json, install manifest, cfg backups, mlox rules
+    cache_dir: Path           # disposable: downloads, hashes, mlox rules, scratch space
+    state_dir: Path           # collections, install manifest, cfg backups, builds
+    config_dir: Path          # overrides.json, lumenaire.toml
+    downloads_dir: Path       # archive cache (default: <cache>/downloads); drop manual downloads here
     overrides_file: Path      # optional per-mod tweaks, see README
     dry_run: bool = False
 
@@ -51,21 +75,26 @@ class Settings:
 
         morrowind_data = (args.morrowind_data or env_path("MORROWIND_DATA_FILES")
                           or data_dir / "Morrowind" / "Data Files")
+        cache, state, config = default_dirs()
+        cache_dir = args.cache_dir or env_path("MWPIPE_CACHE_DIR") or cache
+        config_dir = args.config_dir or env_path("MWPIPE_CONFIG_DIR") or config
         return cls(
             openmw_cfg=cfg,
             data_dir=data_dir,
             morrowind_data=morrowind_data,
             morrowind_ini=env_path("MORROWIND_INI") or morrowind_data.parent / "Morrowind.ini",
             mods_dir=args.mods_dir or env_path("MODS_DIR") or data_dir / "ModData",
-            downloads_dir=args.downloads_dir or env_path("DOWNLOADS_DIR") or data_dir / "Downloads",
             generated_dir=args.generated_dir or env_path("GENERATED_DIR") or data_dir / "Generated",
-            state_dir=env_path("MWPIPE_STATE_DIR") or data_dir / ".mwpipe",
-            overrides_file=env_path("MWPIPE_OVERRIDES") or data_dir / "mwpipe-overrides.json",
+            cache_dir=cache_dir,
+            state_dir=args.state_dir or env_path("MWPIPE_STATE_DIR") or state,
+            config_dir=config_dir,
+            downloads_dir=args.downloads_dir or env_path("DOWNLOADS_DIR") or cache_dir / "downloads",
+            overrides_file=env_path("MWPIPE_OVERRIDES") or config_dir / "overrides.json",
             dry_run=args.dry_run,
         )
 
     def ensure_dirs(self) -> None:
-        for path in (self.mods_dir, self.downloads_dir, self.generated_dir, self.state_dir):
+        for path in (self.mods_dir, self.generated_dir, self.cache_dir, self.state_dir, self.downloads_dir):
             path.mkdir(parents=True, exist_ok=True)
 
 

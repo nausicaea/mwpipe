@@ -1,7 +1,7 @@
 """Mod list -> Nexus collection.
 
   resolve   each Nexus URL -> mod name, version and file id (v3 API); other HTTPS URLs stay "direct"
-  download  every archive into Downloads/ (cached by MD5, so re-runs are cheap)
+  download  every archive into the downloads cache (cached by MD5, so re-runs are cheap)
   install   into a scratch openmw.cfg under the build directory, never into your real one
   sort      plox sorts the plugins; the result becomes the collection's load order
   bundle    collection.json (+ load order) packed as an archive
@@ -104,7 +104,7 @@ def _sniff_suffix(path: Path) -> Path:
 
 
 def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], cache_file: Path) -> None:
-    """Fill in `archive` and `md5` for every mod, downloading what is not in Downloads/ yet."""
+    """Fill in `archive` and `md5` for every mod, downloading what is not in the downloads cache yet."""
     cache = load_json(cache_file, {})
     downloads = pipe.s.downloads_dir
     for mod in mods:
@@ -222,7 +222,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     draft = vortex_manifest({"name": name}, mods, game, [])
     save_json(draft_dir / "collection.json", draft)
     save_json(pipe.current_file, {"slug": f"build-{slug}", "game": game, "revision": 0, "name": name,
-                                  "dir": str(draft_dir)})
+                                  "dir": str(draft_dir.relative_to(build_dir))})
     log.info("== install, configure, sort (plox) ==")
     pipe.run(["install", "configure", "sort"], None)
     base = {m.lower() for m in BASE_MASTERS}

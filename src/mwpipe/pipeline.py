@@ -1,7 +1,8 @@
-"""The pipeline steps. Each step is idempotent and persists its results under Settings.state_dir.
+"""The pipeline steps. Each step is idempotent and persists its results under Settings.state_dir
+(downloads and hashes in Settings.cache_dir, editable files in Settings.config_dir).
 
   fetch       collection URL/nxm/slug -> collection.json
-  download    every mod archive via the Premium API (files already in Downloads/ are reused)
+  download    every mod archive via the Premium API (files already in the downloads cache are reused)
   install     extract archives into ModData/<slug>/, one data folder per mod
   configure   rewrite data=, fallback-archive=, content=, groundcover= (+ fallback= if missing)
   clean       (opt-in) tes3cmd clean on collection plugins
@@ -53,9 +54,9 @@ class Pipeline:
         self.overrides = load_json(settings.overrides_file, {})
         self.current_file = settings.state_dir / "current.json"
         self.manifest_file = settings.state_dir / "manifest.json"
-        self.md5_cache_file = settings.state_dir / "md5-cache.json"
+        self.md5_cache_file = settings.cache_dir / "md5-cache.json"
         self._md5_cache: dict | None = None            # name -> [size, mtime, md5], persisted
-        self._md5_index: dict[str, Path] | None = None  # md5 -> archive in Downloads/, rebuilt lazily
+        self._md5_index: dict[str, Path] | None = None  # md5 -> archive in downloads_dir, rebuilt lazily
 
     # -- helpers -----------------------------------------------------------------------------
     @property
@@ -72,8 +73,11 @@ class Pipeline:
             raise PipelineError("No collection fetched yet; run the 'fetch' step with a collection URL.")
         return cur
 
+    def _collection_dir(self) -> Path:
+        return self.s.state_dir / self.current()["dir"]  # stored relative to state_dir; absolute also works
+
     def collection(self) -> Collection:
-        return Collection.load(Path(self.current()["dir"]) / "collection.json",
+        return Collection.load(self._collection_dir() / "collection.json",
                                self.overrides, self.include_optional)
 
     def _md5(self, path: Path) -> str:
@@ -90,14 +94,14 @@ class Pipeline:
         return digest
 
     def _archives(self) -> dict[str, Path]:
-        """Everything in Downloads/, keyed by MD5."""
+        """Everything in the downloads cache, keyed by MD5."""
         if self._md5_index is None:
             files = sorted(p for p in self.s.downloads_dir.iterdir() if p.is_file() and p.suffix != ".part")
             self._md5_index = {self._md5(p): p for p in files}
         return self._md5_index
 
     def _find_archive(self, mod: Mod) -> Path | None:
-        """A mod's archive in Downloads/: by MD5, or by file name when the collection has no MD5."""
+        """A mod's archive in the downloads cache: by MD5, or by file name when the collection has no MD5."""
         if md5 := (mod.source.get("md5") or "").lower():
             return self._archives().get(md5)
         name = (mod.source.get("logicalFilename") or "").lower()
@@ -125,13 +129,13 @@ class Pipeline:
         if manifest is None:
             raise PipelineError(f"{archive.name} contains no collection.json")
         save_json(self.current_file, {"slug": ref.slug, "game": ref.game, "revision": revision,
-                                      "name": name, "dir": str(manifest.parent)})
+                                      "name": name, "dir": str(manifest.parent.relative_to(self.s.state_dir))})
         log.info("collection %r revision %d: %d mods", name, revision,
                  len(json.loads(manifest.read_text(encoding="utf-8")).get("mods", [])))
 
     def download(self) -> None:
         game = self.current()["game"]
-        bundle_dir = Path(self.current()["dir"]) / "bundled"
+        bundle_dir = self._collection_dir() / "bundled"
         missing: list[str] = []
         for mod in self.collection().mods:
             if self._find_archive(mod):
@@ -194,7 +198,7 @@ class Pipeline:
             log.info("installing %s", mod.name)
             if self.s.dry_run:
                 continue
-            roots = install_mod(mod, archive, mod_dir, self.s.state_dir / "scratch")
+            roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch")
             if self.lowercase_dds:
                 lowercase_textures(mod_dir)
             installed[mod.key] = {"name": mod.name, "spec": spec, "roots": [str(r) for r in roots]}
@@ -283,7 +287,7 @@ class Pipeline:
             log.info("keeping the collection's load order")
             return
         before = self.load_cfg()
-        tools.plox_sort(self.s.openmw_cfg, self.s.state_dir, self.s.dry_run)
+        tools.plox_sort(self.s.openmw_cfg, self.s.cache_dir / "plox", self.s.dry_run)
         after = self.load_cfg()
         if sorted(map(str.lower, before.content)) != sorted(map(str.lower, after.content)):
             log.error("plox changed the set of plugins (not just their order); restoring")
@@ -303,8 +307,9 @@ class Pipeline:
             log.warning("enable groundcover: add 'enabled = true' under [Groundcover] in %s", settings_cfg)
 
     def lightfix(self) -> None:
-        settings = self.s.state_dir / "lumenaire.toml"  # editable copy of the bundled defaults
+        settings = self.s.config_dir / "lumenaire.toml"  # editable copy of the bundled defaults
         if not settings.exists():
+            settings.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(LUMENAIRE_DEFAULTS, settings)
         tools.lumenaire(self.s.openmw_cfg, self.s.generated_dir, settings,
                         self.enlightened_flames, self.s.dry_run)

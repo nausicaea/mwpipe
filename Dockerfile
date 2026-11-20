@@ -54,6 +54,8 @@ RUN pip install --no-cache-dir /build && rm -rf /build
 # Unprivileged user; compose.yaml maps it to your host UID/GID.
 RUN adduser -D -u 1000 modder
 USER modder
-ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp
+# mwpipe's own directories; compose.yaml bind-mounts the host's cache/state/config directories here.
+ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp \
+    MWPIPE_CACHE_DIR=/cache MWPIPE_STATE_DIR=/state MWPIPE_CONFIG_DIR=/config
 ENTRYPOINT ["mwpipe"]
 CMD ["--help"]

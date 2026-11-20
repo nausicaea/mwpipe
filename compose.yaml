@@ -1,6 +1,8 @@
 # Usage: ./mwpipe.sh run <collection-url>   (or: docker compose run --rm mwpipe run <url>)
-# Paths are mounted at the same location inside the container as on the host, so the paths
-# written into openmw.cfg are valid for OpenMW on the host as well as for the tools in here.
+# OpenMW's directories are mounted at the same location inside the container as on the host, so the
+# paths written into openmw.cfg are valid for OpenMW on the host as well as for the tools in here.
+# mwpipe's own cache, state and config directories live elsewhere on the host (mwpipe.sh picks the
+# platform defaults) and appear as /cache, /state and /config in the container.
 name: mwpipe
 
 services:
@@ -18,8 +20,11 @@ services:
     volumes:
       - { type: bind, source: "${OPENMW_DATA_DIR}", target: "${OPENMW_DATA_DIR}" }
       - { type: bind, source: "${OPENMW_CONFIG_DIR}", target: "${OPENMW_CONFIG_DIR}" }
+      - { type: bind, source: "${MWPIPE_CACHE_HOME:?use ./mwpipe.sh or set MWPIPE_CACHE_HOME}", target: /cache }
+      - { type: bind, source: "${MWPIPE_STATE_HOME:?use ./mwpipe.sh or set MWPIPE_STATE_HOME}", target: /state }
+      - { type: bind, source: "${MWPIPE_CONFIG_HOME:?use ./mwpipe.sh or set MWPIPE_CONFIG_HOME}", target: /config }
     secrets: [nexus_api_key]
-    # Hardening: nothing but the two mounts is writable, no capabilities, no privilege escalation.
+    # Hardening: nothing but the mounts is writable, no capabilities, no privilege escalation.
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

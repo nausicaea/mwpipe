@@ -30,14 +30,16 @@ def build_parser() -> argparse.ArgumentParser:
         prog="mwpipe",
         description="Install a Nexus Mods collection for OpenMW and run the post-processing tools.",
         epilog="Environment variables mirror the path flags: OPENMW_DATA_DIR, OPENMW_CONFIG_DIR, "
-               "OPENMW_CONFIG, MORROWIND_DATA_FILES, MODS_DIR, DOWNLOADS_DIR, GENERATED_DIR. "
+               "OPENMW_CONFIG, MORROWIND_DATA_FILES, MODS_DIR, DOWNLOADS_DIR, GENERATED_DIR, "
+               "MWPIPE_CACHE_DIR, MWPIPE_STATE_DIR, MWPIPE_CONFIG_DIR. "
                "API key: Docker secret nexus_api_key, NEXUS_API_KEY_FILE or NEXUS_API_KEY.")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="show what would change without writing")
 
     paths = p.add_argument_group("paths (override environment variables)")
-    for flag in ("data-dir", "openmw-cfg", "morrowind-data", "mods-dir", "downloads-dir", "generated-dir"):
+    for flag in ("data-dir", "openmw-cfg", "morrowind-data", "mods-dir", "generated-dir",
+                 "cache-dir", "state-dir", "config-dir", "downloads-dir"):
         paths.add_argument(f"--{flag}", type=Path, metavar="PATH")
 
     auth = p.add_argument_group("Nexus authentication (never pass the key itself as an argument)")

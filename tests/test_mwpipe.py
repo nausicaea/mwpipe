@@ -19,7 +19,7 @@ from mwpipe.util import PipelineError  # noqa: E402
 from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
 from mwpipe.pipeline import Pipeline  # noqa: E402
-from mwpipe.settings import Settings  # noqa: E402
+from mwpipe.settings import Settings, default_dirs  # noqa: E402
 
 
 def touch(path: Path, data: bytes = b"x") -> Path:
@@ -145,7 +145,8 @@ class TestPipeline(TempDir):
     def make_settings(self):
         args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
                                morrowind_data=None, mods_dir=None, downloads_dir=None,
-                               generated_dir=None, dry_run=False)
+                               generated_dir=None, cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
         return Settings.from_args(args)
 
     def test_full_offline(self):
@@ -203,7 +204,7 @@ class TestPipeline(TempDir):
             pipe.run(post, None)  # idempotent re-run
         self.assertNotIn("plox", calls)  # the collection's load order is trusted by default
         self.assertEqual(calls.count("lumenaire"), 2)
-        self.assertTrue((s.state_dir / "lumenaire.toml").is_file())
+        self.assertTrue((s.config_dir / "lumenaire.toml").is_file())
         cfg = OpenMWConfig.load(s.openmw_cfg)
         self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp", "scripts.omwscripts",
                                        tools.DELTA_OUTPUT, tools.GROUNDCOVER_DELETED, tools.LIGHTS_OUTPUT])
@@ -243,6 +244,34 @@ class TestNexusClient(unittest.TestCase):
     def test_refuses_foreign_hosts(self):
         with self.assertRaises(PipelineError):
             NexusClient("key")._api("https://evil.example/x")
+
+
+class TestDirs(TempDir):
+    def test_linux_defaults_follow_xdg(self):
+        env = {"XDG_CACHE_HOME": "/xdg/cache", "XDG_STATE_HOME": "relative/ignored", "XDG_CONFIG_HOME": ""}
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.dict("os.environ", env), \
+                mock.patch("pathlib.Path.home", return_value=Path("/home/u")):
+            self.assertEqual(default_dirs(), (Path("/xdg/cache/mwpipe"), Path("/home/u/.local/state/mwpipe"),
+                                              Path("/home/u/.config/mwpipe")))
+
+    def test_macos_defaults(self):
+        with mock.patch.object(sys, "platform", "darwin"), mock.patch("pathlib.Path.home", return_value=Path("/Users/u")):
+            cache, state, config = default_dirs()
+        self.assertEqual(cache, Path("/Users/u/Library/Caches/mwpipe"))
+        self.assertEqual(state, config)
+        self.assertEqual(state, Path("/Users/u/Library/Application Support/mwpipe"))
+
+    def test_openmw_and_mwpipe_files_are_separate(self):
+        args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
+                               morrowind_data=None, mods_dir=None, downloads_dir=None, generated_dir=None,
+                               cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
+        s = Settings.from_args(args)
+        self.assertEqual(s.downloads_dir, self.tmp / "cache/downloads")
+        self.assertEqual(s.overrides_file, self.tmp / "config/overrides.json")
+        self.assertEqual((s.mods_dir, s.generated_dir), (self.tmp / "data/ModData", self.tmp / "data/Generated"))
+        for path in (s.downloads_dir, s.state_dir, s.config_dir, s.cache_dir):
+            self.assertFalse(path.is_relative_to(s.data_dir))
 
 
 class TestDownloadUrl(unittest.TestCase):

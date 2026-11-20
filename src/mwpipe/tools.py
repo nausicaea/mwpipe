@@ -47,9 +47,11 @@ def _extra(var: str) -> list[str]:
     return shlex.split(os.environ.get(var, ""))
 
 
-def plox_sort(cfg: Path, state_dir: Path, dry_run: bool) -> None:
-    # plox downloads the mlox rules into ./mlox, so run it from the persistent state dir.
-    run([BIN["plox"], "--non-interactive", "--game", "openmw", "sort"], cfg, state_dir, dry_run)
+def plox_sort(cfg: Path, work_dir: Path, dry_run: bool) -> None:
+    # plox downloads the mlox rules into ./mlox, so run it from a persistent (cache) directory.
+    if not dry_run:
+        work_dir.mkdir(parents=True, exist_ok=True)
+    run([BIN["plox"], "--non-interactive", "--game", "openmw", "sort"], cfg, work_dir, dry_run)
 
 
 def delta_merge(cfg: Path, out_dir: Path, skip: list[str], dry_run: bool) -> None:
