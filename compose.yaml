@@ -40,9 +40,25 @@ volumes:
 
 configs:
   overrides:
-    file: ./config/overrides.json
+    content: |
+      {}
   lumenaire:
-    file: ./config/lumenaire.toml
+    content: |
+      # Lumenaire settings, used unless <config dir>/lumenaire.toml exists (Docker: ./config/lumenaire.toml, a copy of this file).
+      # Values carried over from the previous waza_lightfixes.cfg. Docs: https://modding-openmw.gitlab.io/lumenaire/
+      disable_flickering = true
+
+      [general]   # orange lights: torches, sconces
+      hue = 0.62
+      saturation = 0.8
+      value = 0.57
+      radius = 1.2
+
+      [colored]
+      hue = 1.0
+      saturation = 0.9
+      value = 0.7
+      radius = 1.1
 
 secrets:
   nexus_api_key:
