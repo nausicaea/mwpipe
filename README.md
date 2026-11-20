@@ -7,7 +7,7 @@ The host needs Docker and nothing else.
 collection URL / nxm link
   -> fetch        collection.json from Nexus (GraphQL v2, see "Nexus APIs")
   -> download     mod archives through the Nexus API v3 (requires Premium)
-  -> install      extract to ModData/<slug>/, FOMOD choices and "replicate" mode honoured
+  -> install      extract to ModData/<collection-name-slug>/, FOMOD choices and "replicate" mode honoured
   -> configure    openmw.cfg: data=, fallback-archive=, content=, groundcover=, fallback=
   -> clean        tes3cmd clean (opt-in: --clean)
   -> sort         keep the collection's load order (plox only when needed, see below)
@@ -140,7 +140,7 @@ OpenMW's files and mwpipe's own files are kept apart. OpenMW's, because `openmw.
 ```
 $OPENMW_DATA_DIR/
   Morrowind/Data Files/        base game (yours)
-  ModData/<slug>/NNN Name/     one folder per mod (several if the archive has several roots)
+  ModData/<collection-name-slug>/NNN Name/     one folder per mod (several if the archive has several roots)
   Generated/                   delta merge, groundcover, light fixes (last data= entry)
 ```
 
