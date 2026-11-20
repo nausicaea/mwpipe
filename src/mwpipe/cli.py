@@ -80,7 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--summary", default="", help="short summary, up to 255 characters")
     build.add_argument("--description", default="")
     build.add_argument("--game", help="Nexus game domain (default: taken from the URLs)")
-    build.add_argument("--collection-id", help="add a new revision to this collection instead of creating one")
+    build.add_argument("--collection-id", help="add a new revision to this collection (numeric id) instead of creating one; "
+                            "the name is taken from that collection unless --name is given")
     build.add_argument("--no-upload", action="store_true", help="build and write the files, but do not upload")
     build.add_argument("--output-dir", type=Path, metavar="PATH",
                        help="where collection.json, the bundle and load-order.txt go (default: <state>/builds/<name>/out)")
@@ -118,7 +119,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.modlist == "-" and args.api_key_stdin:
                 raise PipelineError("--api-key-stdin and a mod list on stdin both read stdin; use a key file.")
             text = sys.stdin.read() if args.modlist == "-" else Path(args.modlist).read_text(encoding="utf-8")
-            name = args.name or ("collection" if args.modlist == "-" else Path(args.modlist).stem)
+            name = args.name
+            if not name and not args.collection_id:
+                name = "collection" if args.modlist == "-" else Path(args.modlist).stem
             result = build_collection(
                 settings, client(), text, name=name, summary=args.summary, description=args.description,
                 game=args.game, collection_id=args.collection_id, upload=not args.no_upload,

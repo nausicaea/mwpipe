@@ -85,6 +85,9 @@ Limits: Premium is needed (the mods are downloaded), the bundle must be under 10
 installers run with their default choices, and mods with no plugins at all are included as they are.
 An archive with several alternative data folders ("adding all" warnings in the log) is installed with all
 of them, later ones overriding earlier ones; the v3 manifest has no field for picking one.
+`--collection-id N` adds a revision to an existing collection and reuses its name; if the API will not
+report the name, pass `--name` once and mwpipe remembers it (`collections.json` in the state directory).
+
 Direct downloads get the version `unknown`, since a bare URL carries none.
 
 Archives are looked up by mod and file id in `archives.json` in the cache, independent of the collection

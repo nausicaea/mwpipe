@@ -231,19 +231,35 @@ def make_bundle(out_dir: Path) -> Path:
     return bundle
 
 
+# -- collection names ------------------------------------------------------------------------------
+def known_collection_name(settings: Settings, client: NexusClient, game: str, ref: str) -> str:
+    """Name of an existing collection, from the Nexus API or from what an earlier run recorded."""
+    record = load_json(settings.state_dir / "collections.json", {})
+    name = client.collection_name(game, ref) or record.get(ref, {}).get("name")
+    if not name:
+        raise PipelineError(f"Could not look up the name of collection {ref!r}; pass --name once, mwpipe remembers it. "
+                            "(--collection-id takes the numeric id.)")
+    log.info("collection %s is named %r", ref, name)
+    return name
+
+
 # -- orchestration -----------------------------------------------------------------------------
-def build_collection(settings: Settings, client: NexusClient, modlist: str, *, name: str,
+def build_collection(settings: Settings, client: NexusClient, modlist: str, *, name: str | None,
                      summary: str = "", description: str = "", game: str | None = None,
                      collection_id: str | None = None, upload: bool = True,
                      output_dir: Path | None = None, allow_missing: bool = False) -> dict:
-    if not NAME_LIMITS[0] <= len(name) <= NAME_LIMITS[1]:
-        raise PipelineError(f"The collection name must be {NAME_LIMITS[0]}-{NAME_LIMITS[1]} characters: {name!r}")
     if len(summary) > SUMMARY_LIMIT:
         raise PipelineError(f"The summary is limited to {SUMMARY_LIMIT} characters.")
     parsed = parse_mod_list(modlist)
     entries = parsed.entries
     game = game or next((e.game for e in entries if e.is_nexus), DEFAULT_GAME)
     client.require_premium()  # downloads need it; fail before doing any work
+    if not name and collection_id:  # a new revision keeps the collection's own name
+        name = known_collection_name(settings, client, game, collection_id)
+    if not name:
+        raise PipelineError("Pass --name (or --collection-id, to reuse the name of an existing collection).")
+    if not NAME_LIMITS[0] <= len(name) <= NAME_LIMITS[1]:
+        raise PipelineError(f"The collection name must be {NAME_LIMITS[0]}-{NAME_LIMITS[1]} characters: {name!r}")
     mods = resolve(client, entries, allow_missing)
     if not mods:
         raise PipelineError("No mods left to put in the collection.")
@@ -272,9 +288,9 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     log.info("== install, configure, sort (plox) ==")
     pipe.run(["install", "configure", "sort"], None)
     present = _plugins_by_name(pipe.load_cfg().data)
-    for name in parsed.disabled:
-        if name.lower() not in present:
-            log.warning("'- %s' matches no plugin of the listed mods (check the spelling)", name)
+    for plugin in parsed.disabled:
+        if plugin.lower() not in present:
+            log.warning("'- %s' matches no plugin of the listed mods (check the spelling)", plugin)
     base = {m.lower() for m in BASE_MASTERS}
     load_order = [c for c in pipe.load_cfg().content if c.lower() not in base]
     log.info("plox load order: %d plugins", len(load_order))
@@ -302,6 +318,9 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     upload_id = client.upload_file(bundle, bundle.name)
     created = client.create_collection(upload_id, collection_data, collection_id)
     cid = collection_id or created["id"]
+    known = load_json(settings.state_dir / "collections.json", {})
+    known[str(created["id"])] = {"name": name, "slug": created.get("slug"), "game": game}
+    save_json(settings.state_dir / "collections.json", known)
     result |= {"collection_id": cid, "revision": created.get("revision_number"),
                "status": created.get("revision_status")}
     if not collection_id:

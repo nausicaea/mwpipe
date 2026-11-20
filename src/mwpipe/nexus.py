@@ -137,6 +137,20 @@ class NexusClient:
             raise PipelineError("Nexus returned no download link for the collection archive.")
         return links[0]["URI"], rev["revisionNumber"], rev["collection"]["name"]
 
+    def collection_name(self, game: str, collection_id: str) -> str | None:
+        """Name of one of your collections by numeric id, or None if the API will not tell.
+
+        Only the v3 collection resource is tried (the v3 spec I could check lists no read endpoint,
+        so this may simply return None; mwpipe then falls back to what it recorded itself).
+        """
+        if not collection_id.strip().isdigit():
+            return None
+        try:
+            data = self._api(f"{API_V3}/collections/{collection_id.strip()}")
+        except PipelineError:
+            return None
+        return ((data.get("data") if isinstance(data, dict) else None) or data or {}).get("name")
+
     # -- mod files ---------------------------------------------------------------------------
     def file_url(self, game: str, mod_id: int, file_id: int) -> str:
         """Signed CDN URL for one mod file (links expire after four hours)."""

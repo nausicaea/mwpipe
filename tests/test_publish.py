@@ -77,6 +77,9 @@ class FakeClient(NexusClient):
     def file_url(self, game, mod_id, file_id):
         return f"https://cdn.example/{mod_id}-{file_id}.zip"
 
+    def collection_name(self, game, collection_id):
+        return None  # like a v3 API without a read endpoint
+
     def upload_file(self, path, filename):
         self.sent.append(("upload", filename, path.is_file()))
         return "11111111-1111-1111-1111-111111111111"
@@ -127,6 +130,23 @@ class TestBuildCollection(unittest.TestCase):
         if downloads is not None:
             downloads.extend(c.args[0] for c in dl.call_args_list)
         return client, result
+
+    def test_collection_id_without_name_uses_recorded_name(self):
+        text = "https://www.nexusmods.com/morrowind/mods/1\n"
+        _, first = self.run_build(text, name="Vanilla Cut", summary="s")
+        self.assertEqual(json.loads((self.s.state_dir / "collections.json").read_text())["42"]["name"], "Vanilla Cut")
+        client, second = self.run_build(text, name=None, collection_id="42")
+        self.assertEqual(client.sent[1][1], "42")
+        self.assertIn("vanilla-cut", second["output_dir"])
+
+    def test_collection_id_unknown_needs_name(self):
+        with self.assertRaises(PipelineError):
+            self.run_build("https://www.nexusmods.com/morrowind/mods/1\n", name=None, collection_id="999")
+
+    def test_name_is_not_clobbered_by_disabled_plugins(self):
+        text = "https://www.nexusmods.com/morrowind/mods/1\n- some.esp\n"
+        client, _ = self.run_build(text, name="Real Name")
+        self.assertEqual(client.sent[1][2]["collection_manifest"]["info"]["name"], "Real Name")
 
     def test_rerun_under_another_name_downloads_nothing(self):
         text = "https://www.nexusmods.com/morrowind/mods/1\n"
