@@ -49,6 +49,29 @@ class TestModList(unittest.TestCase):
         with self.assertRaises(PipelineError):
             parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n! only-one.esp\n")
 
+    def test_pick_lines_may_go_anywhere(self):
+        text = ("https://www.nexusmods.com/morrowind/mods/1\nhttps://www.nexusmods.com/morrowind/mods/2?file_id=22\n"
+                "+ https://www.nexusmods.com/morrowind/mods/1 | 00 Core\n"
+                "+ nxm://morrowind/mods/1 | 02 Vanilla style  # note\n"
+                "+ https://www.nexusmods.com/morrowind/mods/2?file_id=22 | Main > Textures > 2K\n")
+        parsed = parse_mod_list(text)
+        first, second = parsed.entries
+        self.assertEqual(parsed.variants, {first.ident: ["00 Core", "02 Vanilla style"]})
+        self.assertEqual(parsed.choices, {second.ident: [("Main", "Textures", "2K")]})
+
+    def test_bad_pick_lines(self):
+        mod = "https://www.nexusmods.com/morrowind/mods/1\n"
+        for bad in ("+ 00 Core\n",                                                   # no mod
+                    "+ https://www.nexusmods.com/morrowind/mods/9 | 00 Core\n",      # mod not in the list
+                    "+ https://www.nexusmods.com/morrowind/mods/1 | a > b\n",        # not step > group > option
+                    "+ https://www.nexusmods.com/morrowind/mods/1 |\n"):
+            with self.assertRaises(PipelineError, msg=bad):
+                parse_mod_list(mod + bad)
+        with self.assertRaises(PipelineError):  # two files of one mod: the bare URL is ambiguous
+            parse_mod_list("https://www.nexusmods.com/morrowind/mods/1?file_id=1\n"
+                           "https://www.nexusmods.com/morrowind/mods/1?file_id=2\n"
+                           "+ https://www.nexusmods.com/morrowind/mods/1 | 00 Core\n")
+
     def test_all_errors_reported(self):
         with self.assertRaises(PipelineError) as ctx:
             parse_mod_list("ftp://x/y\nhttps://www.nexusmods.com/morrowind/collections/abc\n")
@@ -254,6 +277,50 @@ class TestBuildCollection(unittest.TestCase):
         coll = Collection.load(out / "collection.json", {}, include_optional=False)
         self.assertEqual(coll.plugin_order(), order)
         self.assertEqual([m.key for m in coll.mods], ["1-10", "2-20"])
+
+    def test_variant_folders_are_installed_and_recorded(self):
+        def variants(url, dest, md5=None):  # one mod shipping alternative data folders
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("00 Core/core.esp", "c")
+                zf.writestr("01 Alt/alt.esp", "a")
+                zf.writestr("02 Patch/patch.esp", "p")
+            return dest
+        # the picks come after the URL line they belong to, and need not be next to it
+        text = ("https://www.nexusmods.com/morrowind/mods/1\n- nothing.esp\n"
+                "+ https://www.nexusmods.com/morrowind/mods/1 | 00 Core\n+ https://www.nexusmods.com/morrowind/mods/1 | 02 patch\n")
+        with mock.patch.object(publish, "download", side_effect=variants), \
+                mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: None):
+            result = publish.build_collection(self.s, FakeClient(), text, name="Variants", upload=False)
+        out = Path(result["output_dir"])
+        names = (out / "load-order.txt").read_text().split()
+        self.assertEqual(sorted(names[1:]), ["core.esp", "patch.esp"])  # alt.esp was not installed
+        # The choice is stored in the bundle so that `mwpipe run` repeats it, and overrides.json can still win.
+        coll = Collection.load(out / "collection.json", {}, include_optional=False)
+        self.assertEqual(coll.mods[0].overrides["data"], ["00 Core", "02 patch"])
+        coll = Collection.load(out / "collection.json", {"mods": {"1-10": {"data": ["01 Alt"]}}}, include_optional=False)
+        self.assertEqual(coll.mods[0].overrides["data"], ["01 Alt"])
+
+    def test_fomod_choices_are_applied_and_recorded(self):
+        xml = """<config><installSteps><installStep name="Main"><optionalFileGroups>
+            <group name="Pick" type="SelectExactlyOne"><plugins>
+              <plugin name="A"><files><file source="a.esp"/></files></plugin>
+              <plugin name="B"><files><file source="b.esp"/></files></plugin>
+            </plugins></group></optionalFileGroups></installStep></installSteps></config>"""
+        def fomod(url, dest, md5=None):
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("fomod/ModuleConfig.xml", xml)
+                zf.writestr("a.esp", "a")
+                zf.writestr("b.esp", "b")
+            return dest
+        text = "+ https://www.nexusmods.com/morrowind/mods/1 | Main > Pick > B\nhttps://www.nexusmods.com/morrowind/mods/1\n"
+        with mock.patch.object(publish, "download", side_effect=fomod), \
+                mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: None):
+            result = publish.build_collection(self.s, FakeClient(), text, name="Fomod", upload=False)
+        out = Path(result["output_dir"])
+        self.assertEqual((out / "load-order.txt").read_text().split(), ["Morrowind.esm", "b.esp"])
+        bundle = json.loads((out / "collection.json").read_text())
+        self.assertEqual(bundle["mods"][0]["choices"], {"type": "fomod", "options": [
+            {"name": "Main", "groups": [{"name": "Pick", "choices": [{"name": "B"}]}]}]})
 
     def test_disabled_plugin_is_left_out_everywhere(self):
         def two_plugins(url, dest, md5=None):  # one mod shipping either/or plugins

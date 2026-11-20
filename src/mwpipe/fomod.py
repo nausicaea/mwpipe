@@ -44,6 +44,7 @@ class FomodInstaller:
         self.choices = choices or []
         self.flags: dict[str, str] = {}
         self.planned: list[_Install] = []
+        self._used: set[tuple[str, str]] = set()   # (step, group) pairs that recorded choices applied to
 
     # -- conditions ------------------------------------------------------------------------------
     def _deps_met(self, deps: ET.Element | None) -> bool:
@@ -89,6 +90,7 @@ class FomodInstaller:
         plugins = group.findall("plugins/plugin")
         recorded = self._recorded(step, group.get("name", ""))
         if recorded is not None:
+            self._used.add((step, group.get("name", "")))
             chosen = []
             for choice in recorded:
                 by_name = [p for p in plugins if p.get("name") == choice.get("name")]
@@ -97,6 +99,8 @@ class FomodInstaller:
                     chosen.append(by_name[0])
                 elif isinstance(idx, int) and 0 <= idx < len(plugins):
                     chosen.append(plugins[idx])
+                else:
+                    log.warning("FOMOD: option %r not found in %s > %s", choice.get("name"), step, group.get("name"))
             return chosen
         kind = group.get("type", "SelectAny")
         if kind == "SelectAll":
@@ -136,6 +140,11 @@ class FomodInstaller:
         for pattern in self.root.findall("conditionalFileInstalls/patterns/pattern"):
             if self._deps_met(pattern.find("dependencies")):
                 self._queue_files(pattern.find("files"))
+        for s in self.choices:
+            for g in s.get("groups", []):
+                if (s.get("name"), g.get("name")) not in self._used:
+                    log.warning("FOMOD: no step %r with group %r (hidden or misspelled); choices ignored",
+                                s.get("name"), g.get("name"))
         return self.planned
 
     def install(self, dest: Path) -> None:

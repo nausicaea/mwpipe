@@ -69,6 +69,15 @@ v3 API to the mod's primary file. A mod with several wanted files (say separate 
 `?file_id=N` line per file, in the order they should load; when a line has no `file_id` and the mod has other current files,
 the log lists them with their ids. Any other `https://` URL becomes a "direct" download, which
 the collection installer fetches from that URL.
+A line `+ <mod url> | <what>` configures one mod of the list, named by its URL (the file id is optional
+unless the list holds several files of that mod). These lines can go anywhere, for instance all at the
+end. `<what>` is either an archive folder, for archives that ship alternative data folders (`+ <url> | 00 Core`,
+one line per folder, relative to the archive root, case-insensitive; without any, all candidate folders are
+installed), or `Step > Group > Option`, an option of the mod's FOMOD installer (`+ <url> | Main > Textures > 2K`;
+the names must match `fomod/ModuleConfig.xml`, and a name that matches nothing is logged as a warning).
+Folder picks are stored as an `mwpipe` key of the mod in the bundle's `collection.json`, so `mwpipe run`
+repeats them; `mods.<key>.data` in `config/overrides.json` still takes precedence there. FOMOD picks are
+stored as the mod's `choices`, in the format Vortex writes. A mod with folder picks does not run its FOMOD installer.
 A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
 plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
 sounds).esp` to the list, run again, and the conflict is gone from the sort and from the collection
@@ -87,9 +96,11 @@ as a **draft** revision; publish it on the website. Files for inspection land in
 request body), the bundle and `load-order.txt`.
 
 Limits: Premium is needed (the mods are downloaded), the bundle must be under 100 MiB, FOMOD
-installers run with their default choices, and mods with no plugins at all are included as they are.
+installers run with their default choices unless the list picks options with `+` lines, and mods with no plugins at all are included as they are.
 An archive with several alternative data folders ("adding all" warnings in the log) is installed with all
-of them, later ones overriding earlier ones; the v3 manifest has no field for picking one.
+of them, later ones overriding earlier ones, unless the list picks folders with `+` lines. Nexus has no
+field for folder picks: neither the v3 manifest nor Vortex's `collection.json` can select a plain folder
+(Vortex records only FOMOD choices), so they reach `mwpipe run` but are not applied by Vortex.
 `--collection-id N` adds a revision to an existing collection and reuses its name; if the API will not
 report the name, pass `--name` once and mwpipe remembers it (`collections.json` in the state directory).
 

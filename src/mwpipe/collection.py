@@ -84,7 +84,9 @@ class Collection:
                       optional=bool(m.get("optional")), phase=int(m.get("phase") or 0),
                       choices=m.get("choices"), hashes=m.get("hashes"), patches=m.get("patches"),
                       instructions=m.get("instructions") or "")
-            mod.overrides = overrides.get("mods", {}).get(mod.key) or overrides.get("mods", {}).get(mod.name, {})
+            # "mwpipe": {"data": [...]} is written by build-collection from "+ folder" lines; overrides.json wins.
+            configured = overrides.get("mods", {}).get(mod.key) or overrides.get("mods", {}).get(mod.name, {})
+            mod.overrides = {**(m.get("mwpipe") or {}), **configured}
             if mod.overrides.get("skip") or (mod.optional and not include_optional
                                                and not mod.overrides.get("include")):
                 log.info("skipping %s mod: %s", "optional" if mod.optional else "excluded", mod.name)
