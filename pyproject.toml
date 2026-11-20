@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mwpipe"
+version = "1.0.0"
 dynamic = ["version"]  # single source of truth: __version__ in src/mwpipe/__init__.py
 description = "Install a Nexus Mods collection for OpenMW and run delta_plugin, GOCoverify and Lumenaire."
 readme = "README.md"
