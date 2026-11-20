@@ -19,6 +19,7 @@ import hashlib
 import json
 import re
 import shutil
+import struct
 from pathlib import Path
 
 from mwpipe import tools
@@ -281,7 +282,7 @@ class Pipeline:
         for key, path in available.items():
             if key not in listed and key not in disabled and path.suffix.lower() in (".omwscripts", ".omwaddon"):
                 content.append(path.name)
-        cfg.content = dedupe(content)
+        cfg.content = _drop_missing_masters(dedupe(content), available)
         cfg.groundcover = [available[g].name for g in groundcover if g in available]
 
         if not cfg.fallbacks:
@@ -302,6 +303,10 @@ class Pipeline:
         available = _plugins_by_name(cfg.data)
         plugins = [available[c.lower()] for c in cfg.content if c.lower() in available]
         targets = [p for p in plugins if p.suffix.lower() == ".esp" and p.is_relative_to(self.s.mods_dir)]
+        lua = [p for p in targets if _needs_lua_records(p, available)]
+        for p in lua:
+            log.info("not cleaning %s: tes3cmd cannot read OpenMW Lua records (LUAL) in it or its masters", p.name)
+        targets = [p for p in targets if p not in lua]
         changed = tools.tes3cmd_clean(targets, plugins, self.s.state_dir / "tes3cmd",
                                       self.s.state_dir / "uncleaned-originals", self.s.dry_run)
         log.info("tes3cmd cleaned %d of %d plugins", len(changed), len(targets))
@@ -393,6 +398,57 @@ def _plugins_by_name(data_dirs: list[Path]) -> dict[str, Path]:
                     found.pop(path.name.lower(), None)  # re-insert to keep data order
                     found[path.name.lower()] = path
     return found
+
+
+def plugin_masters(path: Path) -> list[str]:
+    """Master names from a TES3-format plugin header; [] for anything else (scripts, unreadable files)."""
+    if path.suffix.lower() not in (".esp", ".esm", ".omwaddon", ".omwgame"):
+        return []
+    try:
+        with path.open("rb") as f:
+            head = f.read(16)
+            if len(head) < 16 or head[:4] != b"TES3":
+                return []
+            data = f.read(struct.unpack("<I", head[4:8])[0])
+    except OSError:
+        return []
+    masters, pos = [], 0
+    while pos + 8 <= len(data):
+        tag, size = data[pos:pos + 4], struct.unpack("<I", data[pos + 4:pos + 8])[0]
+        if tag == b"MAST":
+            masters.append(data[pos + 8:pos + 8 + size].split(b"\0")[0].decode("cp1252", "replace"))
+        pos += 8 + size
+    return masters
+
+
+def _needs_lua_records(path: Path, available: dict[str, Path], _seen: frozenset = frozenset()) -> bool:
+    """True if the plugin, or any of its masters, holds OpenMW's LUAL records, which tes3cmd rejects."""
+    try:
+        if b"LUAL" in path.read_bytes():
+            return True
+    except OSError:
+        return False
+    seen = _seen | {path}
+    return any(m in available and available[m] not in seen and _needs_lua_records(available[m], available, seen)
+               for m in (n.lower() for n in plugin_masters(path)))
+
+
+def _drop_missing_masters(content: list[str], available: dict[str, Path]) -> list[str]:
+    """Remove plugins whose masters are not (or no longer) in the content list; OpenMW tools abort on them."""
+    content = list(content)
+    while True:
+        present = {c.lower() for c in content}
+        broken = {}
+        for name in content:
+            missing = [m for m in plugin_masters(available[name.lower()]) if m.lower() not in present] \
+                if name.lower() in available else []
+            if missing:
+                broken[name] = missing
+        if not broken:
+            return content
+        for name, missing in broken.items():
+            log.warning("skipping %s: missing master %s (not installed or not enabled)", name, ", ".join(missing))
+        content = [c for c in content if c not in broken]
 
 
 def _spec_hash(mod: Mod, archive_md5: str) -> str:
