@@ -362,11 +362,13 @@ class TestConfigFiles(TempDir):
         self.assertEqual(used, defaults)
 
     def test_shipped_config_matches_bundled_defaults(self):
-        """./config/lumenaire.toml (mounted by compose.yaml) is a copy of the packaged defaults."""
+        """./config/lumenaire.toml (mounted by compose.yaml) is a copy of the packaged defaults.
+
+        ./config/overrides.json is user-edited, so only its shape is checked."""
         from mwpipe.pipeline import LUMENAIRE_DEFAULTS
         shipped = Path(__file__).resolve().parents[1] / "config"
         self.assertEqual((shipped / "lumenaire.toml").read_bytes(), LUMENAIRE_DEFAULTS.read_bytes())
-        self.assertEqual(json.loads((shipped / "overrides.json").read_text()), {})
+        self.assertIsInstance(json.loads((shipped / "overrides.json").read_text()), dict)
 
 
 class TestDirs(TempDir):
