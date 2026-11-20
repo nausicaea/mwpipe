@@ -59,7 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--lowercase-dds", action="store_true", help="rename *.DDS textures to lower case")
     run.add_argument("--sort", choices=["auto", "collection", "plox"], default="auto",
                      help="auto: keep the collection's load order, use plox only if it has none or "
-                          "overrides add plugins; collection: never sort; plox: always sort")
+                          "overrides add plugins; collection: never sort; plox: always sort "
+                          "(the only mode that applies plox_rules)")
     run.add_argument("--enlightened-flames", action="store_true",
                      help="Lumenaire candle conversion (needs the Enlightened Flames textures)")
     run.add_argument("--delta-skip", default="Cell,Dialogue,DialogueInfo",
