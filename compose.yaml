@@ -25,8 +25,8 @@ services:
       - { type: volume, source: cache, target: /cache }   # downloads, hashes, mlox rules: safe to delete
       - { type: volume, source: state, target: /state }   # install state, backups, builds
     configs:
-      - { source: overrides, target: /config/overrides.json, mode: 0444 }
-      - { source: lumenaire, target: /config/lumenaire.toml, mode: 0444 }
+      - { source: overrides, target: /config/overrides.json }
+      - { source: lumenaire, target: /config/lumenaire.toml }
     secrets: [nexus_api_key]
     # Hardening: nothing but the mounts is writable, no capabilities, no privilege escalation.
     read_only: true
