@@ -16,7 +16,7 @@ from mwpipe.collection import Collection, normalize_source  # noqa: E402
 from mwpipe.fomod import FomodInstaller  # noqa: E402
 from mwpipe.install import find_data_roots, install_from_hashes  # noqa: E402
 from mwpipe.util import PipelineError  # noqa: E402
-from mwpipe.nexus import ApiError, CollectionRef, NexusClient, parse_collection_ref  # noqa: E402
+from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
 from mwpipe.pipeline import Pipeline  # noqa: E402
 from mwpipe.settings import Settings  # noqa: E402
@@ -243,6 +243,25 @@ class TestNexusClient(unittest.TestCase):
     def test_refuses_foreign_hosts(self):
         with self.assertRaises(PipelineError):
             NexusClient("key")._api("https://evil.example/x")
+
+
+class TestDownloadUrl(unittest.TestCase):
+    def test_spaces_are_encoded(self):
+        url = "https://cdn.example/cdn/100/43931/Unofficial Morrowind-43931-3-3-0.7z?expires=1&md5=a_b-c&user_id=2"
+        self.assertEqual(encode_url(url), "https://cdn.example/cdn/100/43931/Unofficial%20Morrowind-43931-3-3-0.7z"
+                                          "?expires=1&md5=a_b-c&user_id=2")
+
+    def test_already_encoded_is_unchanged(self):
+        url = "https://cdn.example/a%20b/c.7z?x=1%2B2"
+        self.assertEqual(encode_url(url), url)
+
+    def test_network_errors_become_pipeline_errors(self):
+        import urllib.error
+        from mwpipe.nexus import download
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("boom")):
+            with self.assertRaises(PipelineError):
+                download("https://cdn.example/x.7z", Path(tmp, "x.7z"))
 
 
 class TestManifestKeys(unittest.TestCase):

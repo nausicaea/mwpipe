@@ -206,6 +206,14 @@ def put_presigned(url: str, path: Path, filename: str, md5_hex: str) -> None:
         raise PipelineError(f"Upload to storage failed ({err.code}): {err.read().decode(errors='replace')[:300]}") from None
 
 
+def encode_url(url: str) -> str:
+    """Percent-encode characters such as spaces that CDNs leave raw in file names (already-encoded parts stay)."""
+    parts = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit(parts._replace(
+        path=urllib.parse.quote(parts.path, safe="/%:@+,;=~!$&'()*"),
+        query=urllib.parse.quote(parts.query, safe="=&%+:/,;@")))
+
+
 def download(url: str, dest: Path, md5: str | None = None) -> Path:
     """Stream `url` to `dest` atomically and verify its MD5 when one is known.
 
@@ -216,11 +224,15 @@ def download(url: str, dest: Path, md5: str | None = None) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     digest = hashlib.md5()
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=120) as resp, tmp.open("wb") as out:
-        for chunk in iter(lambda: resp.read(1 << 20), b""):
-            digest.update(chunk)
-            out.write(chunk)
+    request = urllib.request.Request(encode_url(url), headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=120) as resp, tmp.open("wb") as out:
+            for chunk in iter(lambda: resp.read(1 << 20), b""):
+                digest.update(chunk)
+                out.write(chunk)
+    except (urllib.error.URLError, OSError) as err:  # HTTPError is a URLError
+        tmp.unlink(missing_ok=True)
+        raise PipelineError(f"Download of {dest.name} failed: {err}") from None
     if md5 and digest.hexdigest() != md5.lower():
         tmp.unlink()
         raise PipelineError(f"{dest.name}: MD5 mismatch, download corrupted or file changed upstream")
