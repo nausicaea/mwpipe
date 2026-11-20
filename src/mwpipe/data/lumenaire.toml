@@ -1,0 +1,15 @@
+# Lumenaire settings, copied to $OPENMW_DATA_DIR/.mwpipe/lumenaire.toml on first run; edit that copy.
+# Values carried over from the previous waza_lightfixes.cfg. Docs: https://modding-openmw.gitlab.io/lumenaire/
+disable_flickering = true
+
+[general]   # orange lights: torches, sconces
+hue = 0.62
+saturation = 0.8
+value = 0.57
+radius = 1.2
+
+[colored]
+hue = 1.0
+saturation = 0.9
+value = 0.7
+radius = 1.1

@@ -1,0 +1,50 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // best-practices = recommended defaults + Docker image digest pinning + GitHub Actions SHA pinning
+  // + config migration PRs. Everything below only adds what the presets can't know about.
+  extends: ["config:best-practices", "schedule:weekly"],
+
+  labels: ["dependencies"],
+  dependencyDashboard: {enabled: true},
+  prConcurrentLimit: 5,
+
+  customManagers: [
+    {
+      // Tool versions in Dockerfile ARGs, annotated on the line above:
+      //   # renovate: datasource=gitlab-tags depName=group/project [versioning=...]
+      //   ARG SOMETHING_VERSION=1.2.3
+      customType: "regex",
+      managerFilePatterns: ["/(^|/)Dockerfile$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+ARG \\w+=(?<currentValue>\\S+)",
+      ],
+    },
+    {
+      // Git commit pins, which follow the head of a branch:
+      //   # renovate: datasource=git-refs depName=x packageName=<git url> branch=<branch>
+      //   ARG SOMETHING_COMMIT=<40 hex chars>
+      customType: "regex",
+      managerFilePatterns: ["/(^|/)Dockerfile$/"],
+      datasourceTemplate: "git-refs",
+      matchStrings: [
+        "# renovate: datasource=git-refs depName=(?<depName>\\S+) packageName=(?<packageName>\\S+) branch=(?<currentValue>\\S+)\\s+ARG \\w+=(?<currentDigest>[a-f0-9]{40})",
+      ],
+    },
+  ],
+
+  packageRules: [
+    {
+      // The python image and .python-version (used by CI) must move together.
+      matchPackageNames: ["python"],
+      groupName: "python",
+    },
+    {
+      // These tools come from GitLab CI artifacts; a new tag can lack one, so the PR build must pass.
+      matchDatasources: ["gitlab-tags"],
+      prBodyNotes: [
+        "GOCoverify and Lumenaire are downloaded from the GitLab CI artifacts of this tag. Merge only if the Docker build job is green.",
+      ],
+    },
+  ],
+}

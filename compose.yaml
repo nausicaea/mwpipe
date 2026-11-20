@@ -1,0 +1,30 @@
+# Usage: ./mwpipe.sh run <collection-url>   (or: docker compose run --rm mwpipe run <url>)
+# Paths are mounted at the same location inside the container as on the host, so the paths
+# written into openmw.cfg are valid for OpenMW on the host as well as for the tools in here.
+name: mwpipe
+
+services:
+  mwpipe:
+    build: .
+    # Set MWPIPE_IMAGE=ghcr.io/<owner>/mwpipe:<tag> to use the published image instead of building locally.
+    image: ${MWPIPE_IMAGE:-mwpipe:local}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      OPENMW_DATA_DIR: ${OPENMW_DATA_DIR:?set OPENMW_DATA_DIR in .env}
+      OPENMW_CONFIG_DIR: ${OPENMW_CONFIG_DIR:?set OPENMW_CONFIG_DIR in .env}
+      MORROWIND_DATA_FILES: ${MORROWIND_DATA_FILES:-}
+      MWPIPE_COLLECTION: ${MWPIPE_COLLECTION:-}
+      RAYON_NUM_THREADS: ${RAYON_NUM_THREADS:-}   # set to 1 if delta_plugin runs out of memory
+    volumes:
+      - { type: bind, source: "${OPENMW_DATA_DIR}", target: "${OPENMW_DATA_DIR}" }
+      - { type: bind, source: "${OPENMW_CONFIG_DIR}", target: "${OPENMW_CONFIG_DIR}" }
+    secrets: [nexus_api_key]
+    # Hardening: nothing but the two mounts is writable, no capabilities, no privilege escalation.
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+secrets:
+  nexus_api_key:
+    file: ${NEXUS_API_KEY_SECRET:-./secrets/nexus_api_key}  # leave empty to be prompted instead

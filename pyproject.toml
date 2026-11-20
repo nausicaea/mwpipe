@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mwpipe"
+dynamic = ["version"]  # single source of truth: __version__ in src/mwpipe/__init__.py
+description = "Install a Nexus Mods collection for OpenMW and run delta_plugin, GOCoverify and Lumenaire."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []  # standard library only
+
+[project.scripts]
+mwpipe = "mwpipe.cli:main"
+
+[tool.hatch.version]
+path = "src/mwpipe/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mwpipe"]  # includes src/mwpipe/data/*
