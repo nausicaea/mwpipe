@@ -1,11 +1,11 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 # mwpipe: Nexus collection -> OpenMW, plus plox, delta_plugin, GOCoverify, Lumenaire and tes3cmd.
 #
 # Versions are only ever set in the annotated ARG lines below, which Renovate keeps current
 # (see renovate.json5). Base images get their @sha256 digest from Renovate too.
 
 # ---- Rust tools: built from source at a pinned tag -------------------------------------------
-FROM rust:1-alpine AS rust-tools
+FROM rust:1-alpine@sha256:8d0e82abfdf9a38071e07cabc5afba4ddbe077631a80e4e742a760c38beadc33 AS rust-tools
 # g++ is needed by delta_plugin's directxtex crate (C++ build script); the others are for plox and git deps.
 RUN apk add --no-cache g++ musl-dev openssl-dev openssl-libs-static git
 # renovate: datasource=gitlab-tags depName=portmod/delta-plugin
@@ -16,7 +16,7 @@ RUN cargo install --locked --git https://gitlab.com/portmod/delta-plugin --tag "
  && cargo install --locked --git https://github.com/rfuzzo/plox --tag "$PLOX_VERSION" plox
 
 # ---- Go tools: prebuilt binaries from the GitLab CI artifacts of a pinned tag ----------------
-FROM alpine:3 AS go-tools
+FROM alpine:3@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS go-tools
 RUN apk add --no-cache curl unzip
 ARG TARGETARCH
 # renovate: datasource=gitlab-tags depName=modding-openmw/gocoverify
