@@ -267,10 +267,15 @@ class Pipeline:
         if collection:
             disabled |= collection.disabled_plugins()
         order = collection.plugin_order() if collection else None
-        content = [m for m in BASE_MASTERS if m.lower() in available]
         if order is None:  # no author load order: masters first, then data order (plox refines it)
             is_master = lambda p: p.suffix.lower() in (".esm", ".omwgame")  # noqa: E731
             order = [p.name for p in sorted(available.values(), key=lambda p: not is_master(p))]
+        # Base masters come first, unless the collection's own order puts a plugin ahead of one
+        # (e.g. an .esm that must load before Bloodmoon.esm): then its positions are kept.
+        base_l = {m.lower() for m in BASE_MASTERS}
+        names = [n.lower() for n in order]
+        keep_positions = any(n in base_l and any(o not in base_l for o in names[:i]) for i, n in enumerate(names))
+        content = [m for m in BASE_MASTERS if m.lower() in available and not (keep_positions and m.lower() in names)]
         for name in [*order, *ov.get("extra_content", [])]:
             path = available.get(name.lower())
             if path is None:
@@ -329,12 +334,13 @@ class Pipeline:
         "plox" always sorts; "collection" never does.
         """
         has_order = self.current_file.exists() and self.collection().plugin_order() is not None
-        added = bool(self.overrides.get("extra_content"))
+        rules = list(self.overrides.get("plox_rules", []))
+        added = bool(self.overrides.get("extra_content")) or bool(rules)
         if self.sort_mode == "collection" or (self.sort_mode == "auto" and has_order and not added):
             log.info("keeping the collection's load order")
             return
         before = self.load_cfg()
-        tools.plox_sort(self.s.openmw_cfg, self.s.cache_dir / "plox", self.s.dry_run)
+        tools.plox_sort(self.s.openmw_cfg, self.s.cache_dir / "plox", self.s.dry_run, rules)
         after = self.load_cfg()
         if sorted(map(str.lower, before.content)) != sorted(map(str.lower, after.content)):
             log.error("plox changed the set of plugins (not just their order); restoring")

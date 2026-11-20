@@ -43,6 +43,12 @@ class TestModList(unittest.TestCase):
         with self.assertRaises(PipelineError):
             parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n-\n")
 
+    def test_order_rule_lines(self):
+        parsed = parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n! Distant_Seafloor_2.00.esm < Bloodmoon.esm\n")
+        self.assertEqual(parsed.rules, ["[Order]\nDistant_Seafloor_2.00.esm\nBloodmoon.esm"])
+        with self.assertRaises(PipelineError):
+            parse_mod_list("https://www.nexusmods.com/morrowind/mods/1\n! only-one.esp\n")
+
     def test_all_errors_reported(self):
         with self.assertRaises(PipelineError) as ctx:
             parse_mod_list("ftp://x/y\nhttps://www.nexusmods.com/morrowind/collections/abc\n")
@@ -122,7 +128,8 @@ class TestBuildCollection(unittest.TestCase):
             lines = cfg_path.read_text().splitlines()
             content = [ln for ln in lines if ln.startswith("content=")]
             rest = [ln for ln in lines if not ln.startswith("content=")]
-            cfg_path.write_text("\n".join(rest + content[::-1]) + "\n")
+            base = [ln for ln in content if ln.lower().endswith(("morrowind.esm", "tribunal.esm", "bloodmoon.esm"))]
+            cfg_path.write_text("\n".join(rest + base + [ln for ln in content if ln not in base][::-1]) + "\n")
         client = FakeClient()
         with mock.patch.object(publish, "download", side_effect=fake_download) as dl, \
                 mock.patch.object(tools, "run", side_effect=fake_plox):
@@ -228,7 +235,7 @@ class TestBuildCollection(unittest.TestCase):
 
         out = Path(result["output_dir"])
         order = (out / "load-order.txt").read_text().split()
-        self.assertEqual(order, ["2-20.esp", "1-10.esp"])  # the fake plox reversed it
+        self.assertEqual(order, ["Morrowind.esm", "2-20.esp", "1-10.esp"])  # the fake plox reversed the plugins
         bundle = json.loads((out / "collection.json").read_text())
         self.assertEqual([e["name"] for e in bundle["loadOrder"]], order)
 
@@ -254,9 +261,9 @@ class TestBuildCollection(unittest.TestCase):
         self.assertNotIn("louder", seen[0])  # plox never saw the alternative, so it reports no conflict
         self.assertTrue(any("typo.esp" in line for line in logs.output))
         out = Path(result["output_dir"])
-        self.assertEqual((out / "load-order.txt").read_text().split("\n")[:-1], ["a.esp"])
+        self.assertEqual((out / "load-order.txt").read_text().split("\n")[:-1], ["Morrowind.esm", "a.esp"])
         coll = Collection.load(out / "collection.json", {}, include_optional=False)
-        self.assertEqual(coll.plugin_order(), ["a.esp"])
+        self.assertEqual(coll.plugin_order(), ["Morrowind.esm", "a.esp"])
         self.assertIn("a (louder).esp", coll.disabled_plugins())
 
     def test_no_upload_and_new_revision(self):

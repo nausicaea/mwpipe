@@ -69,7 +69,9 @@ the collection installer fetches from that URL.
 A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
 plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
 sounds).esp` to the list, run again, and the conflict is gone from the sort and from the collection
-(the plugin is stored as disabled, which `mwpipe run` honors). The mod list file must be somewhere the container
+(the plugin is stored as disabled, which `mwpipe run` honors). A line `! first.esm < second.esm` is a
+plox order rule (the first plugin loads before the second); the sorted result, base masters included, is
+what the collection stores as its `loadOrder`. The mod list file must be somewhere the container
 can see (below `$OPENMW_DATA_DIR`), or be piped in on stdin as above.
 
 What happens: every archive is downloaded (cached by MD5), installed into a scratch setup that never
@@ -114,6 +116,12 @@ The collection's load order is what its author tested, so it is used as is (`--s
 plox only runs when the collection has no load order or `extra_content` adds plugins with no
 position of their own. `--sort plox` always sorts with the mlox rules; `--sort collection` never does.
 Generated plugins are always appended last.
+
+To place a plugin yourself, add mlox rules (plox's `[Order]`, `[NearStart]`, `[NearEnd]` blocks, earlier
+plugin loads first) as strings under `plox_rules` in `config/overrides.json`. mwpipe writes them to plox's
+`mlox_my_rules.txt` next to the downloaded rules, and any `plox_rules` make `--sort auto` run plox. The
+base masters (Morrowind, Tribunal, Bloodmoon) stay first unless the collection's order puts another plugin
+ahead of one, as in the example above.
 
 ## Input and secrets
 
@@ -185,6 +193,7 @@ A timestamped backup goes to `backups/` in the state volume before every write. 
   "fallback":      { "Fonts_Font_0": "pelagiad", "Fonts_Font_2": "OMWAyembedt" },
   "groundcover":   ["Vurts Groundcover - Reeds.esp"],
   "disable":       ["Unwanted.esp"],
+  "plox_rules":    ["[Order]\nDistant_Seafloor_2.00.esm\nBloodmoon.esm"],
   "extra_content": ["MyPatch.esp"],
   "extra_data":    ["/path/to/a/manually/installed/mod"]
 }
