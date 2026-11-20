@@ -87,6 +87,11 @@ An archive with several alternative data folders ("adding all" warnings in the l
 of them, later ones overriding earlier ones; the v3 manifest has no field for picking one.
 Direct downloads get the version `unknown`, since a bare URL carries none.
 
+Archives are looked up by mod and file id in `archives.json` in the cache, independent of the collection
+name. If that index is lost, files already in `downloads/` are adopted by name and size. A fresh download
+that is byte-identical to an existing file is merged into it. To clean up duplicates left by earlier
+versions, run `mwpipe dedupe-downloads` (add `--dry-run` to preview); the shortest name of each group stays.
+
 ### Nexus APIs
 
 | Call | API | Why |
@@ -140,7 +145,7 @@ mwpipe's own files, in Docker:
 
 | | Where | Holds |
 | --- | --- | --- |
-| cache | named volume `mwpipe_cache`, `/cache` | `downloads/` (archive cache), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
+| cache | named volume `mwpipe_cache`, `/cache` | `downloads/` (archive cache), `archives.json` (which mod is which file), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
 | state | named volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
 | config | `./config/overrides.json` and `./config/lumenaire.toml`, mounted read-only on `/config` by compose's `configs:` | Yours to edit; mwpipe never writes them. Without a `lumenaire.toml` the packaged defaults are used. |
 

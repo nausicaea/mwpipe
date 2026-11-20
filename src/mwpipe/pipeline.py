@@ -80,6 +80,39 @@ class Pipeline:
         return Collection.load(self._collection_dir() / "collection.json",
                                self.overrides, self.include_optional)
 
+    def dedupe_downloads(self, only: Path | None = None) -> list[tuple[Path, Path]]:
+        """Remove byte-identical archives from the downloads directory.
+
+        Returns (removed, kept) pairs. The shortest name is kept; with `only`, just that file is
+        compared and it is the one removed when a twin exists. Honors --dry-run.
+        """
+        by_size: dict[int, list[Path]] = {}
+        for f in sorted(self.s.downloads_dir.iterdir()) if self.s.downloads_dir.is_dir() else []:
+            if f.is_file() and f.suffix != ".part":
+                by_size.setdefault(f.stat().st_size, []).append(f)
+        merged: list[tuple[Path, Path]] = []
+        for size, files in by_size.items():
+            if len(files) < 2 or (only is not None and only not in files):
+                continue
+            by_md5: dict[str, list[Path]] = {}
+            for f in files:
+                by_md5.setdefault(self._md5(f), []).append(f)
+            for group in by_md5.values():
+                if len(group) < 2 or (only is not None and only not in group):
+                    continue
+                if only is not None:
+                    keep = min((f for f in group if f != only), key=lambda f: (len(f.name), f.name))
+                    drop = [only]
+                else:
+                    keep = min(group, key=lambda f: (len(f.name), f.name))
+                    drop = [f for f in group if f != keep]
+                for f in drop:
+                    log.info("%sduplicate %s == %s", "would remove " if self.s.dry_run else "removing ", f.name, keep.name)
+                    if not self.s.dry_run:
+                        f.unlink()
+                    merged.append((f, keep))
+        return merged
+
     def _md5(self, path: Path) -> str:
         """MD5 with a (size, mtime) cache so re-runs don't re-hash gigabytes of archives."""
         if self._md5_cache is None:

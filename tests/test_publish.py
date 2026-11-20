@@ -1,5 +1,6 @@
 """Offline tests for `mwpipe build-collection`: mod list parsing, manifests and the whole flow."""
 
+import io
 import json
 import sys
 import tempfile
@@ -71,7 +72,7 @@ class FakeClient(NexusClient):
                 "main_file_version": {"game_scoped_id": str(mod_id * 10)} if mod_id != 4 else None}
 
     def file_version(self, game, file_id):
-        return {"version": f"v{file_id}"}
+        return {"version": f"v{file_id}", "size_in_bytes": len(zip_bytes(f"{file_id // 10}-{file_id}"))}
 
     def file_url(self, game, mod_id, file_id):
         return f"https://cdn.example/{mod_id}-{file_id}.zip"
@@ -85,11 +86,16 @@ class FakeClient(NexusClient):
         return {"id": "42", "slug": "abc123", "revision_number": 1, "revision_status": "draft"}
 
 
+def zip_bytes(stem):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(f"Data Files/{stem}.esp", stem)
+    return buf.getvalue()
+
+
 def fake_download(url, dest, md5=None):
     """Every 'archive' is a zip with one plugin named after the URL."""
-    stem = Path(url).stem
-    with zipfile.ZipFile(dest, "w") as zf:
-        zf.writestr(f"Data Files/{stem}.esp", stem)
+    dest.write_bytes(zip_bytes(Path(url).stem))
     return dest
 
 
@@ -108,17 +114,77 @@ class TestBuildCollection(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def run_build(self, text, **kwargs):
+    def run_build(self, text, downloads=None, **kwargs):
         def fake_plox(cmd, cfg_path, cwd, dry_run=False):  # reverse the plugin order, like a real re-sort
             lines = cfg_path.read_text().splitlines()
             content = [ln for ln in lines if ln.startswith("content=")]
             rest = [ln for ln in lines if not ln.startswith("content=")]
             cfg_path.write_text("\n".join(rest + content[::-1]) + "\n")
         client = FakeClient()
-        with mock.patch.object(publish, "download", side_effect=fake_download), \
+        with mock.patch.object(publish, "download", side_effect=fake_download) as dl, \
                 mock.patch.object(tools, "run", side_effect=fake_plox):
             result = publish.build_collection(self.s, client, text, **kwargs)
+        if downloads is not None:
+            downloads.extend(c.args[0] for c in dl.call_args_list)
         return client, result
+
+    def test_rerun_under_another_name_downloads_nothing(self):
+        text = "https://www.nexusmods.com/morrowind/mods/1\n"
+        first, second = [], []
+        self.run_build(text, downloads=first, name="First Name", upload=False)
+        self.run_build(text, downloads=second, name="Second Name", upload=False)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(second, [])
+        self.assertEqual(len(list(self.s.downloads_dir.iterdir())), 1)
+
+    def test_lost_index_adopts_files_by_name_and_size(self):
+        text = "https://www.nexusmods.com/morrowind/mods/1\n"
+        self.run_build(text, name="Some List", upload=False)
+        (self.s.cache_dir / "archives.json").unlink()
+        again = []
+        self.run_build(text, downloads=again, name="Some List", upload=False)
+        self.assertEqual(again, [])
+        self.assertEqual(len(list(self.s.downloads_dir.iterdir())), 1)
+
+    def test_direct_url_is_not_downloaded_twice(self):
+        text = "https://gitlab.example/g/proj/-/package_files/77/download\n"
+        first, second = [], []
+        self.run_build(text, downloads=first, name="A List", upload=False)
+        (self.s.cache_dir / "archives.json").unlink()
+        self.run_build(text, downloads=second, name="B List", upload=False)
+        self.assertEqual((len(first), second), (1, []))
+
+    def test_dedupe_downloads(self):
+        from mwpipe.pipeline import Pipeline
+        self.s.ensure_dirs()
+        d = self.s.downloads_dir
+        (d / "Mod-1-0.7z").write_bytes(b"same")
+        (d / "5-50-Mod-1-0.7z").write_bytes(b"same")
+        (d / "other.7z").write_bytes(b"different")
+        pipe = Pipeline(self.s)
+        merged = pipe.dedupe_downloads()
+        self.assertEqual([(a.name, b.name) for a, b in merged], [("5-50-Mod-1-0.7z", "Mod-1-0.7z")])
+        self.assertEqual(sorted(f.name for f in d.iterdir()), ["Mod-1-0.7z", "other.7z"])
+
+    def test_dedupe_dry_run_keeps_everything(self):
+        import dataclasses
+        from mwpipe.pipeline import Pipeline
+        self.s.ensure_dirs()
+        d = self.s.downloads_dir
+        (d / "a.7z").write_bytes(b"same")
+        (d / "bb.7z").write_bytes(b"same")
+        Pipeline(dataclasses.replace(self.s, dry_run=True)).dedupe_downloads()
+        self.assertEqual(len(list(d.iterdir())), 2)
+
+    def test_fresh_download_identical_to_existing_is_merged(self):
+        from mwpipe.pipeline import Pipeline
+        self.s.ensure_dirs()
+        d = self.s.downloads_dir
+        (d / "Mod-1.7z").write_bytes(b"same")
+        (d / "Mod-1-copy.7z").write_bytes(b"same")
+        kept = Pipeline(self.s).dedupe_downloads(only=d / "Mod-1-copy.7z")
+        self.assertEqual([k.name for _, k in kept], ["Mod-1.7z"])
+        self.assertFalse((d / "Mod-1-copy.7z").exists())
 
     def test_end_to_end(self):
         text = "https://www.nexusmods.com/morrowind/mods/1\nhttps://www.nexusmods.com/morrowind/mods/2\n"

@@ -69,6 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
     post.add_argument("--sort", choices=["auto", "collection", "plox"], default="auto")
     post.add_argument("--enlightened-flames", action="store_true")
 
+    sub.add_parser("dedupe-downloads", help="remove byte-identical archives from the downloads directory "
+                                            "(honors --dry-run)")
+
     build = sub.add_parser("build-collection", help="turn a list of mod URLs into a Nexus collection and upload it",
                            description="Downloads the mods, sorts their plugins with plox and uploads the "
                                        "result as a draft collection on the account of the API key.")
@@ -104,6 +107,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "postprocess":
             Pipeline(settings, sort_mode=args.sort, enlightened_flames=args.enlightened_flames
                      ).run(POSTPROCESS_STEPS, None)
+            return 0
+
+        if args.command == "dedupe-downloads":
+            merged = Pipeline(settings).dedupe_downloads()
+            log.info("%d duplicate(s) %s", len(merged), "found" if settings.dry_run else "removed")
             return 0
 
         if args.command == "build-collection":

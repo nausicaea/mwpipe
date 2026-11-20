@@ -44,6 +44,7 @@ class ListedMod:
     author: str | None = None
     adult: bool = False
     file_id: int | None = None
+    size: int | None = None
     archive: Path | None = None
     md5: str | None = None
 
@@ -82,7 +83,8 @@ def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -
                 file_id = int(main["game_scoped_id"])
             version = client.file_version(entry.game, file_id)
             mods.append(ListedMod(entry, page["name"], version.get("version") or page.get("version") or "unknown",
-                                  page.get("author"), bool(page.get("adult_content")), file_id))
+                                  page.get("author"), bool(page.get("adult_content")), file_id,
+                                  version.get("size_in_bytes")))
             log.info("resolved %s %s (file %d)", page["name"], mods[-1].version, file_id)
         except PipelineError as err:  # includes ApiError (404, 403, 451 for adult mods, ...)
             problems.append(f"- {entry.url}: {err}")
@@ -103,33 +105,72 @@ def _sniff_suffix(path: Path) -> Path:
     return path
 
 
-def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], cache_file: Path) -> None:
-    """Fill in `archive` and `md5` for every mod, downloading what is not in the downloads cache yet."""
-    cache = load_json(cache_file, {})
+def _existing(downloads: Path, names: list[str], size: int | None) -> Path | None:
+    """The first of `names` already in the downloads directory (and of the right size, when known)."""
+    for name in names:
+        path = downloads / name
+        if path.is_file() and (size is None or path.stat().st_size == size):
+            return path
+    return None
+
+
+def _direct_candidates(downloads: Path, stem: str) -> list[str]:
+    """Earlier downloads of a direct URL: '<stem>' or '<stem>.<suffix>' (the suffix is sniffed afterwards)."""
+    if not downloads.is_dir():
+        return []
+    return sorted(f.name for f in downloads.iterdir()
+                  if f.is_file() and f.suffix != ".part" and (f.name == stem or f.name.startswith(stem + ".")))
+
+
+def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], index_file: Path,
+                   legacy_index: Path | None = None) -> None:
+    """Fill in `archive` and `md5` for every mod, downloading only what is not in the downloads cache yet.
+
+    The index (mod -> file) lives in the cache directory and is shared by all collections. If it is
+    missing or stale, files already in the downloads directory are adopted by name and size, and a fresh
+    download that turns out to be byte-identical to an existing file is merged into it.
+    """
+    index = {**(load_json(legacy_index, {}) if legacy_index else {}), **load_json(index_file, {})}
     downloads = pipe.s.downloads_dir
     for mod in mods:
-        record = cache.get(mod.cache_key)
-        if record and (path := downloads / record["file"]).is_file() and pipe._md5(path) == record["md5"]:
-            mod.archive, mod.md5 = path, record["md5"]
-            continue
+        record = index.get(mod.cache_key)
+        if record and (path := downloads / record["file"]).is_file():
+            digest = pipe._md5(path)
+            if digest == record["md5"]:
+                mod.archive, mod.md5 = path, digest
+                continue
         e = mod.entry
         if e.is_nexus:
             client.require_premium()
             url = client.file_url(e.game, e.mod_id, mod.file_id)
             name = filename_from_url(url, f"{e.mod_id}-{mod.file_id}.archive")
-            if (downloads / name).exists():  # same name, maybe different content: keep both
-                name = f"{e.mod_id}-{mod.file_id}-{name}"
+            prefixed = f"{e.mod_id}-{mod.file_id}-{name}"  # older versions renamed on a name clash
+            found = _existing(downloads, [name, prefixed], mod.size)
+            if found:
+                log.info("already downloaded: %s", found.name)
+            elif (downloads / name).exists():  # same name, other content: keep both
+                name = prefixed
         else:
             url = e.url
             ids = [s for s in urllib.parse.urlsplit(url).path.split("/") if s.isdigit()]
             name = "-".join([mod.name, *ids[:1]])
-        dest = downloads / name
-        download(url, dest)
-        if not e.is_nexus:
-            dest = _sniff_suffix(dest)
+            names = _direct_candidates(downloads, name)
+            found = downloads / names[0] if names else None
+            if found:
+                log.info("already downloaded: %s", found.name)
+        if found:
+            dest = found
+        else:
+            dest = downloads / name
+            download(url, dest)
+            if not e.is_nexus:
+                dest = _sniff_suffix(dest)
+            twins = pipe.dedupe_downloads(only=dest)  # same bytes under another name: keep one copy
+            if twins:
+                dest = twins[0][1]
         mod.archive, mod.md5 = dest, pipe._md5(dest)
-        cache[mod.cache_key] = {"file": dest.name, "md5": mod.md5}
-        save_json(cache_file, cache)
+        index[mod.cache_key] = {"file": dest.name, "md5": mod.md5}
+        save_json(index_file, index)
 
 
 # -- manifests -------------------------------------------------------------------------------------
@@ -220,7 +261,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     out_dir.mkdir(parents=True, exist_ok=True)
 
     log.info("== download ==")
-    fetch_archives(pipe, client, mods, build_dir / "archives.json")
+    fetch_archives(pipe, client, mods, settings.cache_dir / "archives.json", build_dir / "archives.json")
 
     draft_dir = build_dir / "draft"
     draft_dir.mkdir(parents=True, exist_ok=True)
