@@ -47,10 +47,19 @@ def _extra(var: str) -> list[str]:
     return shlex.split(os.environ.get(var, ""))
 
 
-def plox_sort(cfg: Path, work_dir: Path, dry_run: bool) -> None:
+PLOX_USER_RULES = "mlox_my_rules.txt"  # read by plox next to the downloaded mlox_base/mlox_user, never overwritten
+
+
+def plox_sort(cfg: Path, work_dir: Path, dry_run: bool, rules: list[str] = ()) -> None:
     # plox downloads the mlox rules into ./mlox, so run it from a persistent (cache) directory.
     if not dry_run:
         work_dir.mkdir(parents=True, exist_ok=True)
+        rules_file = work_dir / "mlox" / PLOX_USER_RULES
+        if rules:
+            rules_file.parent.mkdir(parents=True, exist_ok=True)
+            rules_file.write_text("\n\n".join(rules) + "\n", encoding="utf-8")
+        else:
+            rules_file.unlink(missing_ok=True)
     run([BIN["plox"], "--non-interactive", "--game", "openmw", "sort"], cfg, work_dir, dry_run)
 
 

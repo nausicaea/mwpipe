@@ -15,7 +15,7 @@ from mwpipe import tools  # noqa: E402
 from mwpipe.collection import Collection, normalize_source  # noqa: E402
 from mwpipe.fomod import FomodInstaller  # noqa: E402
 from mwpipe.install import find_data_roots, install_from_hashes  # noqa: E402
-from mwpipe.util import PipelineError  # noqa: E402
+from mwpipe.util import PipelineError, save_json  # noqa: E402
 from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
 from mwpipe.pipeline import Pipeline, _drop_missing_masters, _needs_lua_records, collection_dir_name, plugin_masters  # noqa: E402
@@ -252,6 +252,60 @@ class TestMasters(TempDir):
         other = touch(self.tmp / "other.esp", tes3("Morrowind.esm"))
         available = {"lua.esp": lua, "dep.esp": dep, "other.esp": other}
         self.assertEqual([_needs_lua_records(p, available) for p in (lua, dep, other)], [True, True, False])
+
+
+class TestPloxRules(TempDir):
+    def settings(self):
+        args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
+                               morrowind_data=None, mods_dir=None, downloads_dir=None,
+                               generated_dir=None, cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
+        return Settings.from_args(args)
+
+    def test_rules_file_written_and_removed(self):
+        s = self.settings()
+        s.openmw_cfg.parent.mkdir(parents=True)
+        with mock.patch.object(tools, "run"):
+            tools.plox_sort(s.openmw_cfg, self.tmp / "work", False, ["[Order]\na.esm\nb.esm"])
+            rules = self.tmp / "work/mlox" / tools.PLOX_USER_RULES
+            self.assertEqual(rules.read_text(), "[Order]\na.esm\nb.esm\n")
+            tools.plox_sort(s.openmw_cfg, self.tmp / "work", False)
+        self.assertFalse(rules.exists())
+
+    def test_sort_runs_plox_when_rules_set(self):
+        s = self.settings()
+        s.ensure_dirs()
+        s.overrides_file.parent.mkdir(parents=True, exist_ok=True)
+        s.overrides_file.write_text(json.dumps({"plox_rules": ["[Order]\na.esm\nb.esm"]}))
+        touch(s.state_dir / "collections/c/collection.json", json.dumps(
+            {"info": {"name": "C"}, "mods": [], "loadOrder": [{"id": "a.esm", "name": "a.esm", "enabled": True}]}).encode())
+        (s.state_dir / "current.json").write_text(json.dumps(
+            {"slug": "c", "game": "morrowind", "revision": 1, "name": "C", "dir": "collections/c"}))
+        calls = []
+        with mock.patch.object(tools, "plox_sort", side_effect=lambda *a, **k: calls.append(a)):
+            pipe = Pipeline(s)
+            pipe.save_cfg(pipe.load_cfg())
+            pipe.sort()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][3], ["[Order]\na.esm\nb.esm"])
+
+    def test_collection_order_before_base_master_is_kept(self):
+        s = self.settings()
+        for name in ("Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"):
+            touch(s.morrowind_data / name)
+        mod = s.mods_dir / "c" / "001 Seafloor"
+        touch(mod / "Distant_Seafloor_2.00.esm")
+        order = ["Morrowind.esm", "Tribunal.esm", "Distant_Seafloor_2.00.esm", "Bloodmoon.esm"]
+        touch(s.state_dir / "collections/c/collection.json", json.dumps({
+            "info": {"name": "C"}, "mods": [],
+            "loadOrder": [{"id": n.lower(), "name": n, "enabled": True} for n in order]}).encode())
+        (s.state_dir / "current.json").write_text(json.dumps(
+            {"slug": "c", "game": "morrowind", "revision": 1, "name": "C", "dir": "collections/c"}))
+        s.ensure_dirs()
+        save_json(s.state_dir / "manifest.json", {"_order": [str(mod)]})
+        pipe = Pipeline(s)
+        pipe.configure()
+        self.assertEqual(OpenMWConfig.load(s.openmw_cfg).content, order)
 
 
 class TestNexusClient(unittest.TestCase):

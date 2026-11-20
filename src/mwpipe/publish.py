@@ -268,7 +268,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     out_dir = output_dir or build_dir / "out"
     # A private pipeline: own state and openmw.cfg, so the user's real setup is left alone.
     build_dir.mkdir(parents=True, exist_ok=True)
-    save_json(build_dir / "overrides.json", {"disable": parsed.disabled})  # your own overrides.json is not used
+    save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules})  # your own overrides.json is not used
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
                                   overrides_file=build_dir / "overrides.json", dry_run=False)
     pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox")
@@ -290,9 +290,11 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     for plugin in parsed.disabled:
         if plugin.lower() not in present:
             log.warning("'- %s' matches no plugin of the listed mods (check the spelling)", plugin)
+    # The base masters stay in the exported order: a rule may place a plugin before Bloodmoon.esm.
+    load_order = list(pipe.load_cfg().content)
     base = {m.lower() for m in BASE_MASTERS}
-    load_order = [c for c in pipe.load_cfg().content if c.lower() not in base]
-    log.info("plox load order: %d plugins", len(load_order))
+    plugin_count = sum(1 for c in load_order if c.lower() not in base)
+    log.info("plox load order: %d plugins", plugin_count)
 
     user = client.user()
     info = {"author": user.get("name") or "unknown",
@@ -308,7 +310,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     save_json(out_dir / "collection-data.json", collection_data)
     (out_dir / "load-order.txt").write_text("\n".join(load_order) + "\n", encoding="utf-8")
     bundle = make_bundle(out_dir)
-    result = {"mods": len(mods), "plugins": len(load_order), "disabled": parsed.disabled, "bundle": str(bundle), "output_dir": str(out_dir)}
+    result = {"mods": len(mods), "plugins": plugin_count, "disabled": parsed.disabled, "bundle": str(bundle), "output_dir": str(out_dir)}
     if not upload:
         log.info("--no-upload: nothing was sent. Files are in %s", out_dir)
         return result
