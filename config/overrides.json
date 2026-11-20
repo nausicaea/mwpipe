@@ -30,5 +30,6 @@
         "Big Icons": {
             "data": ["01 1X Flat"]
         }
-    }
+    },
+    "plox_rules": ["[Order]\nDistant_Seafloor_2.00.esm\nBloodmoon.esm"]
 }
