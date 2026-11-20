@@ -335,9 +335,11 @@ class Pipeline:
         """
         has_order = self.current_file.exists() and self.collection().plugin_order() is not None
         rules = list(self.overrides.get("plox_rules", []))
-        added = bool(self.overrides.get("extra_content")) or bool(rules)
+        added = bool(self.overrides.get("extra_content"))
         if self.sort_mode == "collection" or (self.sort_mode == "auto" and has_order and not added):
             log.info("keeping the collection's load order")
+            if rules:
+                log.warning("plox_rules ignored: the collection's load order is kept (use --sort plox to apply them)")
             return
         before = self.load_cfg()
         tools.plox_sort(self.s.openmw_cfg, self.s.cache_dir / "plox", self.s.dry_run, rules)

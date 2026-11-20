@@ -119,7 +119,8 @@ Generated plugins are always appended last.
 
 To place a plugin yourself, add mlox rules (plox's `[Order]`, `[NearStart]`, `[NearEnd]` blocks, earlier
 plugin loads first) as strings under `plox_rules` in `config/overrides.json`. mwpipe writes them to plox's
-`mlox_my_rules.txt` next to the downloaded rules, and any `plox_rules` make `--sort auto` run plox. The
+`mlox_my_rules.txt` next to the downloaded rules; they apply with `--sort plox` (and always in
+`build-collection`), while `--sort auto` keeps the collection's order and warns that they are ignored. The
 base masters (Morrowind, Tribunal, Bloodmoon) stay first unless the collection's order puts another plugin
 ahead of one, as in the example above.
 

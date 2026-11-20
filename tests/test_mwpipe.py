@@ -272,7 +272,7 @@ class TestPloxRules(TempDir):
             tools.plox_sort(s.openmw_cfg, self.tmp / "work", False)
         self.assertFalse(rules.exists())
 
-    def test_sort_runs_plox_when_rules_set(self):
+    def test_sort_rules_apply_only_with_sort_plox(self):
         s = self.settings()
         s.ensure_dirs()
         s.overrides_file.parent.mkdir(parents=True, exist_ok=True)
@@ -285,7 +285,11 @@ class TestPloxRules(TempDir):
         with mock.patch.object(tools, "plox_sort", side_effect=lambda *a, **k: calls.append(a)):
             pipe = Pipeline(s)
             pipe.save_cfg(pipe.load_cfg())
-            pipe.sort()
+            with self.assertLogs("mwpipe", "WARNING") as logs:
+                pipe.sort()  # auto: the collection's order is trusted
+            self.assertEqual(calls, [])
+            self.assertTrue(any("plox_rules ignored" in line for line in logs.output))
+            Pipeline(s, sort_mode="plox").sort()
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][3], ["[Order]\na.esm\nb.esm"])
 
