@@ -14,7 +14,6 @@ data directory order, so later entries override earlier ones, as in OpenMW's dat
 from __future__ import annotations
 
 import dataclasses
-import re
 import shutil
 import subprocess
 import urllib.parse
@@ -24,7 +23,7 @@ from pathlib import Path
 
 from mwpipe.modlist import ModEntry, parse_mod_list
 from mwpipe.nexus import NexusClient, download, filename_from_url
-from mwpipe.pipeline import BASE_MASTERS, Pipeline, _plugins_by_name
+from mwpipe.pipeline import BASE_MASTERS, Pipeline, _plugins_by_name, collection_dir_name
 from mwpipe.settings import Settings
 from mwpipe.util import PipelineError, load_json, log, save_json
 
@@ -264,7 +263,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     if not mods:
         raise PipelineError("No mods left to put in the collection.")
 
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "collection"
+    slug = collection_dir_name(name)
     build_dir = settings.state_dir / "builds" / slug
     out_dir = output_dir or build_dir / "out"
     # A private pipeline: own state and openmw.cfg, so the user's real setup is left alone.
@@ -283,7 +282,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     draft_dir.mkdir(parents=True, exist_ok=True)
     draft = vortex_manifest({"name": name}, mods, game, [])
     save_json(draft_dir / "collection.json", draft)
-    save_json(pipe.current_file, {"slug": f"build-{slug}", "game": game, "revision": 0, "name": name,
+    save_json(pipe.current_file, {"slug": slug, "game": game, "revision": 0, "name": name,
                                   "dir": str(draft_dir.relative_to(build_dir))})
     log.info("== install, configure, sort (plox) ==")
     pipe.run(["install", "configure", "sort"], None)

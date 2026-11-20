@@ -3,7 +3,7 @@
 
   fetch       collection URL/nxm/slug -> collection.json
   download    every mod archive via the Premium API (files already in the downloads cache are reused)
-  install     extract archives into ModData/<slug>/, one data folder per mod
+  install     extract archives into ModData/<collection-name-slug>/, one data folder per mod
   configure   rewrite data=, fallback-archive=, content=, groundcover= (+ fallback= if missing)
   clean       (opt-in) tes3cmd clean on collection plugins
   sort        keep the collection's load order, or sort with plox (see Pipeline.sort)
@@ -17,6 +17,7 @@ from __future__ import annotations
 import configparser
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -36,6 +37,11 @@ POSTPROCESS_STEPS = ["sort", "delta", "groundcover", "lightfix"]
 BASE_MASTERS = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]
 BASE_ARCHIVES = ["Morrowind.bsa", "Tribunal.bsa", "Bloodmoon.bsa"]
 LUMENAIRE_DEFAULTS = Path(__file__).parent / "data" / "lumenaire.toml"
+
+
+def collection_dir_name(name: str) -> str:
+    """Directory name for a collection under ModData: its name lowercased, runs of other characters -> '-'."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "collection"
 
 
 class Pipeline:
@@ -220,7 +226,7 @@ class Pipeline:
                     log.warning("not installed (archive missing): %s", mod.name)
                     continue
                 raise PipelineError(f"Archive for {mod.name} is missing; run the download step.")
-            mod_dir = self.s.mods_dir / cur["slug"] / mod.dir_name
+            mod_dir = self.s.mods_dir / (collection_dir_name(cur["name"]) if cur.get("name") else cur["slug"]) / mod.dir_name
             spec = _spec_hash(mod, self._md5(archive))
             previous = manifest.get(mod.key)
             if previous and previous["spec"] == spec and all(Path(r).is_dir() for r in previous["roots"]):

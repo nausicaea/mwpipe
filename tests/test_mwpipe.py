@@ -18,7 +18,7 @@ from mwpipe.install import find_data_roots, install_from_hashes  # noqa: E402
 from mwpipe.util import PipelineError  # noqa: E402
 from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
-from mwpipe.pipeline import Pipeline  # noqa: E402
+from mwpipe.pipeline import Pipeline, collection_dir_name  # noqa: E402
 from mwpipe.settings import Settings, default_dirs  # noqa: E402
 
 
@@ -182,6 +182,7 @@ class TestPipeline(TempDir):
         self.assertEqual(cfg.content, ["Morrowind.esm", "Tribunal.esm", "ModA.esp"])
         self.assertEqual(cfg.archives, ["Morrowind.bsa", "ModA.bsa"])
         self.assertEqual(cfg.data[0], s.morrowind_data)
+        self.assertTrue(any(d.is_relative_to(s.mods_dir / "test") for d in cfg.data), "mods go under the name slug")
         self.assertEqual(cfg.data[-1], s.generated_dir)
         self.assertEqual(cfg.fallbacks, {"General_Werewolf_FOV": "100"})
 
@@ -219,6 +220,12 @@ class TestPipeline(TempDir):
         cfg = OpenMWConfig.load(s.openmw_cfg)
         self.assertEqual(cfg.content[0], "ModA.esp")
         self.assertEqual(cfg.content[-3:], [tools.DELTA_OUTPUT, tools.GROUNDCOVER_DELETED, tools.LIGHTS_OUTPUT])
+
+
+class TestCollectionDirName(unittest.TestCase):
+    def test_slugified_name(self):
+        self.assertEqual(collection_dir_name("I Heart Vanilla: Director's Cut"), "i-heart-vanilla-director-s-cut")
+        self.assertEqual(collection_dir_name("!!!"), "collection")
 
 
 class TestNexusClient(unittest.TestCase):
