@@ -18,7 +18,7 @@ from mwpipe.install import find_data_roots, install_from_hashes  # noqa: E402
 from mwpipe.util import PipelineError  # noqa: E402
 from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
-from mwpipe.pipeline import Pipeline, collection_dir_name  # noqa: E402
+from mwpipe.pipeline import Pipeline, _drop_missing_masters, _needs_lua_records, collection_dir_name, plugin_masters  # noqa: E402
 from mwpipe.settings import Settings, default_dirs  # noqa: E402
 
 
@@ -226,6 +226,32 @@ class TestCollectionDirName(unittest.TestCase):
     def test_slugified_name(self):
         self.assertEqual(collection_dir_name("I Heart Vanilla: Director's Cut"), "i-heart-vanilla-director-s-cut")
         self.assertEqual(collection_dir_name("!!!"), "collection")
+
+
+def tes3(*masters: str) -> bytes:
+    import struct
+    subs = b"".join(b"MAST" + struct.pack("<I", len(m) + 1) + m.encode() + b"\0"
+                    + b"DATA" + struct.pack("<I", 8) + bytes(8) for m in masters)
+    return b"TES3" + struct.pack("<III", len(subs), 0, 0) + subs
+
+
+class TestMasters(TempDir):
+    def test_masters_read_and_missing_ones_dropped_transitively(self):
+        plugins = {n: touch(self.tmp / n, data) for n, data in {
+            "Morrowind.esm": tes3(), "A.esp": tes3("Morrowind.esm"),
+            "B.esp": tes3("Morrowind.esm", "Absent.esm"), "C.esp": tes3("B.esp"), "junk.esp": b"x"}.items()}
+        self.assertEqual(plugin_masters(plugins["B.esp"]), ["Morrowind.esm", "Absent.esm"])
+        self.assertEqual(plugin_masters(plugins["junk.esp"]), [])
+        available = {n.lower(): p for n, p in plugins.items()}
+        self.assertEqual(_drop_missing_masters(list(plugins), available), ["Morrowind.esm", "A.esp", "junk.esp"])
+
+
+    def test_lua_records_found_through_masters(self):
+        lua = touch(self.tmp / "lua.esp", tes3("Morrowind.esm") + b"LUAL")
+        dep = touch(self.tmp / "dep.esp", tes3("lua.esp"))
+        other = touch(self.tmp / "other.esp", tes3("Morrowind.esm"))
+        available = {"lua.esp": lua, "dep.esp": dep, "other.esp": other}
+        self.assertEqual([_needs_lua_records(p, available) for p in (lua, dep, other)], [True, True, False])
 
 
 class TestNexusClient(unittest.TestCase):
