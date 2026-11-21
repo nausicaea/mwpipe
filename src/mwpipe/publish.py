@@ -266,10 +266,12 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     slug = collection_dir_name(name)
     build_dir = settings.state_dir / "builds" / slug
     out_dir = output_dir or build_dir / "out"
-    # A private pipeline: own state and openmw.cfg, so the user's real setup is left alone.
+    # A private pipeline: own state, openmw.cfg and ModData, so the user's real setup (including an installed
+    # ModData/<collection name> from `mwpipe run`) is never touched.
     build_dir.mkdir(parents=True, exist_ok=True)
     save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules})  # your own overrides.json is not used
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
+                                  mods_dir=build_dir / "ModData", generated_dir=build_dir / "Generated",
                                   overrides_file=build_dir / "overrides.json", dry_run=False)
     pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox")
     scratch.ensure_dirs()
