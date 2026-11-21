@@ -142,8 +142,17 @@ def prune_to_plugins(roots: list[Path]) -> None:
 
 
 def lowercase_textures(root: Path) -> None:
-    """Rename *.DDS -> *.dds (the old lowercase-dds-files.sh); helps tools that are case-sensitive."""
+    """Rename *.DDS -> *.dds (the old lowercase-dds-files.sh); helps tools that are case-sensitive.
+
+    Only the extension changes; the rest of the name stays as the mod author wrote it. A file is never
+    overwritten: if the lower-case name is already taken by another file, both are kept and a warning is logged.
+    """
     for dirpath, _, files in os.walk(root):
         for name in files:
-            if name.lower().endswith(".dds") and name != name.lower():
-                os.replace(Path(dirpath, name), Path(dirpath, name.lower()))
+            stem, ext = os.path.splitext(name)
+            if ext.lower() == ".dds" and ext != ".dds":
+                target = Path(dirpath, stem + ".dds")
+                if target.exists() and not target.samefile(Path(dirpath, name)):
+                    log.warning("not renaming %s: %s already exists", Path(dirpath, name), target.name)
+                    continue
+                os.replace(Path(dirpath, name), target)

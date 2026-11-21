@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))  # run from
 from mwpipe import tools  # noqa: E402
 from mwpipe.collection import Collection, normalize_source  # noqa: E402
 from mwpipe.fomod import FomodInstaller  # noqa: E402
-from mwpipe.install import find_data_roots, install_from_hashes  # noqa: E402
+from mwpipe.install import find_data_roots, install_from_hashes, lowercase_textures  # noqa: E402
 from mwpipe.util import PipelineError, save_json  # noqa: E402
 from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse_collection_ref  # noqa: E402
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
@@ -88,6 +88,23 @@ class TestInstall(TempDir):
     def test_data_files_folder(self):
         touch(self.tmp / "Mod/Data Files/textures/t.dds")
         self.assertEqual([r.name for r in find_data_roots(self.tmp)], ["Data Files"])
+
+    def test_lowercase_textures_changes_only_the_extension(self):
+        touch(self.tmp / "t/Textures/Tx_Hair.DDS", b"1")
+        touch(self.tmp / "t/Textures/ok.dds", b"2")
+        touch(self.tmp / "t/Textures/Tx_Keep.TGA", b"3")
+        lowercase_textures(self.tmp / "t")
+        self.assertEqual(sorted(p.name for p in (self.tmp / "t/Textures").iterdir()),
+                         ["Tx_Hair.dds", "Tx_Keep.TGA", "ok.dds"])
+
+    def test_lowercase_textures_never_overwrites(self):
+        touch(self.tmp / "t/Hair.DDS", b"upper")
+        touch(self.tmp / "t/Hair.dds", b"lower")
+        with self.assertLogs("mwpipe", "WARNING"):
+            lowercase_textures(self.tmp / "t")
+        # on a case-insensitive filesystem the two names are one file; either way no content is lost
+        contents = {p.read_bytes() for p in (self.tmp / "t").iterdir()}
+        self.assertTrue(contents <= {b"upper", b"lower"} and contents)
 
     def test_hashes(self):
         touch(self.tmp / "arc/Mod/Data Files/Meshes/A.nif")
