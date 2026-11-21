@@ -26,7 +26,7 @@ from pathlib import Path
 from mwpipe import tools
 from mwpipe.archives import extract
 from mwpipe.collection import Collection, Mod
-from mwpipe.install import PLUGIN_EXTS, install_mod, lowercase_textures
+from mwpipe.install import PLUGIN_EXTS, install_mod, lowercase_textures, prune_to_plugins
 from mwpipe.nexus import CollectionRef, NexusClient, download, filename_from_url
 from mwpipe.openmw_cfg import OpenMWConfig, dedupe, import_ini_fallbacks
 from mwpipe.settings import Settings
@@ -50,8 +50,9 @@ def collection_dir_name(name: str) -> str:
 class Pipeline:
     def __init__(self, settings: Settings, client_factory=None, include_optional=False,
                  allow_missing=False, lowercase_dds=False, sort_mode="auto",
-                 delta_skip=("Cell", "Dialogue", "DialogueInfo"), enlightened_flames=False):
+                 delta_skip=("Cell", "Dialogue", "DialogueInfo"), enlightened_flames=False, plugins_only=False):
         self.s = settings
+        self.plugins_only = plugins_only  # keep only plugin files of installed mods (build-collection's private copy)
         self._client_factory = client_factory
         self._client: NexusClient | None = None
         self.include_optional = include_optional
@@ -235,6 +236,8 @@ class Pipeline:
             spec = _spec_hash(mod, self._md5(archive))
             previous = manifest.get(mod.key)
             if previous and previous["spec"] == spec and all(Path(r).is_dir() for r in previous["roots"]):
+                if self.plugins_only and not self.s.dry_run:
+                    prune_to_plugins([Path(r) for r in previous["roots"]])  # also slims installs from before this existed
                 installed[mod.key] = previous
                 continue
             if mod.patches:
@@ -243,7 +246,9 @@ class Pipeline:
             if self.s.dry_run:
                 continue
             roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch")
-            if self.lowercase_dds:
+            if self.plugins_only:
+                prune_to_plugins(roots)
+            elif self.lowercase_dds:
                 lowercase_textures(mod_dir)
             installed[mod.key] = {"name": mod.name, "spec": spec, "roots": [str(r) for r in roots]}
             save_json(self.manifest_file, {**manifest, **installed})

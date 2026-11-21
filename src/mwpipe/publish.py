@@ -273,7 +273,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
                                   mods_dir=build_dir / "ModData", generated_dir=build_dir / "Generated",
                                   overrides_file=build_dir / "overrides.json", dry_run=False)
-    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox")
+    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox", plugins_only=True)
     scratch.ensure_dirs()
     out_dir.mkdir(parents=True, exist_ok=True)
 

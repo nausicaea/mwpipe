@@ -125,6 +125,22 @@ def _move_roots(roots: list[Path], mod_dir: Path) -> list[Path]:
     return result
 
 
+def prune_to_plugins(roots: list[Path]) -> None:
+    """Keep only the plugin files that sit directly in each data folder; everything else is deleted.
+
+    `build-collection` needs the plugins (names, masters) to sort them, never the textures, meshes or sounds.
+    The folders themselves stay, because the install manifest checks that they exist.
+    """
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for child in root.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            elif child.suffix.lower() not in PLUGIN_EXTS:
+                child.unlink()
+
+
 def lowercase_textures(root: Path) -> None:
     """Rename *.DDS -> *.dds (the old lowercase-dds-files.sh); helps tools that are case-sensitive."""
     for dirpath, _, files in os.walk(root):

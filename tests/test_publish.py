@@ -308,6 +308,25 @@ class TestBuildCollection(unittest.TestCase):
             with self.assertRaises(PipelineError):
                 self.run_build("https://www.nexusmods.com/morrowind/mods/1", name=bad)
 
+    def test_build_keeps_only_plugin_files(self):
+        def rich_archive(url, dest, md5=None):
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("Data Files/a.esp", "a")
+                zf.writestr("Data Files/readme.txt", "x")
+                zf.writestr("Data Files/textures/t.dds", "t")
+                zf.writestr("Data Files/meshes/sub/m.nif", "m")
+            return dest
+        with mock.patch.object(publish, "download", side_effect=rich_archive), \
+                mock.patch.object(tools, "run"):
+            publish.build_collection(self.s, FakeClient(), "https://www.nexusmods.com/morrowind/mods/1\n",
+                                     name="Slim List", upload=False)
+            publish.build_collection(self.s, FakeClient(), "https://www.nexusmods.com/morrowind/mods/1\n",
+                                     name="Slim List", upload=False)  # rebuild: the skip path must keep it slim too
+        # where the build installs depends on whether it has its own ModData; check both places
+        files = [p.name for d in (self.s.mods_dir, self.s.state_dir / "builds/slim-list/ModData")
+                 for p in d.rglob("*") if p.is_file()]
+        self.assertEqual(files, ["a.esp"])
+
 
 class TestBundle(unittest.TestCase):
     def test_zip_fallback_roundtrip(self):
