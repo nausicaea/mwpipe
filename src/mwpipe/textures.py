@@ -41,6 +41,11 @@ def _clean(raw: bytes) -> str:
     if len(text) > 1 and ord(text[0]) == len(text) - 1:  # the string's own length prefix
         text = text[1:]
     text = text.replace("\\", "/").strip().lower()
+    if ":" in text and "textures/" in text:  # absolute Windows path: keep what follows the textures folder
+        text = text.rsplit("textures/", 1)[1]
+    text = text.lstrip("/")
+    while text.startswith("./"):
+        text = text[2:]
     return text[len("textures/"):] if text.startswith("textures/") else text
 
 
@@ -48,9 +53,9 @@ def texture_refs(nif: bytes) -> set[str]:
     """Texture names (lower case, relative to textures/, without extension) mentioned in a NIF file."""
     refs = set()
     for match in _REF.finditer(nif):
-        name = _clean(match.group())
+        name = os.path.splitext(_clean(match.group()))[0].rstrip(". ")
         if name:
-            refs.add(os.path.splitext(name)[0])
+            refs.add(name)
     return refs
 
 
@@ -120,11 +125,11 @@ def scan_missing_textures(data_dirs: list[Path], archives: list[Path], mods_dir:
 
 
 def _mod_name(root: Path, mods_dir: Path) -> str:
-    """`<collection>/<mod>[/<sub folder>]` below ModData -> the mod's folder name; else the folder's own name."""
+    """`<collection>/<mod>[/<sub folder>]` below ModData -> the mod's folder name; else `<parent>/<folder>`."""
     try:
         parts = root.relative_to(mods_dir).parts
     except ValueError:
-        return root.name
+        return f"{root.parent.name}/{root.name}" if root.parent.name else root.name
     return parts[1] if len(parts) > 1 else (parts[0] if parts else root.name)
 
 

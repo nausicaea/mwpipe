@@ -332,6 +332,17 @@ class TestMissingTextures(TempDir):
         self.assertIn("bh/bh_fp_hair_07", refs)
         self.assertIn("tx_a", refs)
 
+    def test_refs_normalise_odd_paths(self):
+        refs = texture_refs(nif("\\textures\\hr\\a.dds", "c:\\morrowind\\data files\\textures\\fx_b.tga",
+                                "tr\\lnd\\c_01..dds", ".\\d.dds"))
+        self.assertEqual(refs, {"hr/a", "fx_b", "tr/lnd/c_01", "d"})
+
+    def test_folder_outside_moddata_is_labelled_with_its_parent(self):
+        game = self.tmp / "Morrowind/Data Files"
+        touch(game / "meshes/m.nif", nif("gone.dds"))
+        result = scan_missing_textures([game], [], self.tmp / "ModData")
+        self.assertEqual(result.by_mod(), {"Morrowind/Data Files": ["gone"]})
+
     def test_bsa_names(self):
         path = touch(self.tmp / "a.bsa", bsa(["textures\\tx_a.dds", "meshes\\m.nif"]))
         self.assertEqual(bsa_names(path), ["textures\\tx_a.dds", "meshes\\m.nif"])
