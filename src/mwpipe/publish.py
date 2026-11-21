@@ -71,9 +71,18 @@ def _file_choices_hint(client: NexusClient, entry: ModEntry, mod_name: str, pick
              if f.get("category_name") in ("MAIN", "OPTIONAL") and f.get("file_id") is not None]
     if len(files) < 2:
         return
-    label = lambda f: f"{f.get('name') or f.get('file_name') or 'file'} ({f['file_id']})"  # noqa: E731
+    names = [f.get("name") or f.get("file_name") or "file" for f in files]
+
+    def label(f: dict) -> str:  # files sharing a display name are told apart by their file name or version
+        name = f.get("name") or f.get("file_name") or "file"
+        if names.count(name) > 1:
+            extra = f.get("file_name") or f.get("version")
+            if extra and extra != name:
+                name = f"{name} [{extra}]"
+        return f"{name} ({f['file_id']})"
+
     primary = next((label(f) for f in files if f["file_id"] == picked), str(picked))
-    shown = ", ".join(label(f) for f in files[:6]) + (", ..." if len(files) > 6 else "")
+    shown = ", ".join(label(f) for f in files[:6]) + (f", and {len(files) - 6} more" if len(files) > 6 else "")
     log.info("%s (mod %d): no file_id given, using the primary file %s; the mod offers %d files: %s. "
              "Add ?file_id=N to pick one or more.", mod_name, entry.mod_id, primary, len(files), shown)
 

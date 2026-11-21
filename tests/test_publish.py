@@ -326,6 +326,18 @@ class TestFileHint(unittest.TestCase):
         self.assertIn("Meshes (12)", hint)
         self.assertNotIn("Old", hint)
 
+    def test_same_display_name_is_told_apart_and_long_lists_are_cut(self):
+        files = [{"file_id": 20 + i, "name": "Icons", "file_name": f"icons-{i}.7z", "category_name": "MAIN"}
+                 for i in range(8)]
+        with self.assertLogs("mwpipe", "INFO") as logs:
+            self.resolve("https://www.nexusmods.com/morrowind/mods/1\n", files + [dict(self.FILES[0], file_id=99)])
+        hint = next(line for line in logs.output if "no file_id given" in line)
+        self.assertIn("Icons [icons-0.7z] (20)", hint)
+        self.assertIn("Icons [icons-5.7z] (25)", hint)
+        self.assertNotIn("icons-6", hint)
+        self.assertIn(", and 3 more. Add ?file_id=N", hint)
+        self.assertNotIn("...", hint)
+
     def test_no_hint_when_pinned_or_single_file(self):
         for text, files in [("https://www.nexusmods.com/morrowind/mods/1?file_id=10\n", self.FILES),
                             ("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES[:1] + self.FILES[3:]),
