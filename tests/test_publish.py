@@ -320,6 +320,7 @@ class TestFileHint(unittest.TestCase):
         with self.assertLogs("mwpipe", "INFO") as logs:
             self.resolve("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES)
         hint = next(line for line in logs.output if "no file_id given" in line)
+        self.assertIn("Mod 1 (mod 1):", hint)
         self.assertIn("primary file BH_FIX (10)", hint)
         self.assertIn("3 files", hint)
         self.assertIn("Meshes (12)", hint)

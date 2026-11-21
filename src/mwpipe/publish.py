@@ -74,8 +74,8 @@ def _file_choices_hint(client: NexusClient, entry: ModEntry, mod_name: str, pick
     label = lambda f: f"{f.get('name') or f.get('file_name') or 'file'} ({f['file_id']})"  # noqa: E731
     primary = next((label(f) for f in files if f["file_id"] == picked), str(picked))
     shown = ", ".join(label(f) for f in files[:6]) + (", ..." if len(files) > 6 else "")
-    log.info("%s: no file_id given, using the primary file %s; the mod offers %d files: %s. "
-             "Add ?file_id=N to pick one or more.", mod_name, primary, len(files), shown)
+    log.info("%s (mod %d): no file_id given, using the primary file %s; the mod offers %d files: %s. "
+             "Add ?file_id=N to pick one or more.", mod_name, entry.mod_id, primary, len(files), shown)
 
 
 def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -> list[ListedMod]:
