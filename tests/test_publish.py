@@ -290,7 +290,15 @@ class TestBuildCollection(unittest.TestCase):
                 "+ https://www.nexusmods.com/morrowind/mods/1 | 00 Core\n+ https://www.nexusmods.com/morrowind/mods/1 | 02 patch\n")
         with mock.patch.object(publish, "download", side_effect=variants), \
                 mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: None):
-            result = publish.build_collection(self.s, FakeClient(), text, name="Variants", upload=False)
+            with self.assertLogs("mwpipe", "INFO") as logs:
+                result = publish.build_collection(self.s, FakeClient(), text, name="Variants", upload=False)
+            with self.assertLogs("mwpipe", "INFO") as again:  # the unchanged mod is not installed again, still listed
+                publish.build_collection(self.s, FakeClient(), text, name="Variants", upload=False)
+        for output in ("\n".join(logs.output), "\n".join(again.output)):
+            self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1 | <folder>", output)
+            self.assertIn("[x] 00 Core", output)
+            self.assertIn("[ ] 01 Alt", output)
+            self.assertIn("[x] 02 Patch", output)
         out = Path(result["output_dir"])
         names = (out / "load-order.txt").read_text().split()
         self.assertEqual(sorted(names[1:]), ["core.esp", "patch.esp"])  # alt.esp was not installed
@@ -315,7 +323,12 @@ class TestBuildCollection(unittest.TestCase):
         text = "+ https://www.nexusmods.com/morrowind/mods/1 | Main > Pick > B\nhttps://www.nexusmods.com/morrowind/mods/1\n"
         with mock.patch.object(publish, "download", side_effect=fomod), \
                 mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: None):
-            result = publish.build_collection(self.s, FakeClient(), text, name="Fomod", upload=False)
+            with self.assertLogs("mwpipe", "INFO") as logs:
+                result = publish.build_collection(self.s, FakeClient(), text, name="Fomod", upload=False)
+        output = "\n".join(logs.output)
+        self.assertIn("[ ] Main > Pick > A", output)
+        self.assertIn("[x] Main > Pick > B", output)
+        self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1 | Step > Group > Option", output)
         out = Path(result["output_dir"])
         self.assertEqual((out / "load-order.txt").read_text().split(), ["Morrowind.esm", "b.esp"])
         bundle = json.loads((out / "collection.json").read_text())

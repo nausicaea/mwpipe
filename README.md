@@ -78,6 +78,11 @@ the names must match `fomod/ModuleConfig.xml`, and a name that matches nothing i
 Folder picks are stored as an `mwpipe` key of the mod in the bundle's `collection.json`, so `mwpipe run`
 repeats them; `mods.<key>.data` in `config/overrides.json` still takes precedence there. FOMOD picks are
 stored as the mod's `choices`, in the format Vortex writes. A mod with folder picks does not run its FOMOD installer.
+`build-collection` logs what each archive offers, so you can add `+` lines step by step: the options of
+every FOMOD installer (as `Step > Group > Option`, `[x]` for what is installed now) and the data folders
+of archives with several of them, each with the `+ <mod url> | ...` line to use. The listing is repeated
+on later runs, also for mods that are not installed again. FOMOD steps that are hidden by an earlier
+choice only show up once that choice has been made, so run again after adding lines.
 A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
 plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
 sounds).esp` to the list, run again, and the conflict is gone from the sort and from the collection

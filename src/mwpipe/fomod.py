@@ -44,6 +44,7 @@ class FomodInstaller:
         self.choices = choices or []
         self.flags: dict[str, str] = {}
         self.planned: list[_Install] = []
+        self.report: list[tuple[str, str, str, list[tuple[str, bool]]]] = []  # (step, group, type, [(option, chosen)])
         self._used: set[tuple[str, str]] = set()   # (step, group) pairs that recorded choices applied to
 
     # -- conditions ------------------------------------------------------------------------------
@@ -133,7 +134,10 @@ class FomodInstaller:
             if not self._deps_met(step.find("visible")):
                 continue
             for group in step.findall("optionalFileGroups/group"):
-                for plugin in self._select(step.get("name", ""), group):
+                selected = self._select(step.get("name", ""), group)
+                self.report.append((step.get("name", ""), group.get("name", ""), group.get("type", "SelectAny"),
+                                    [(p.get("name", ""), p in selected) for p in group.findall("plugins/plugin")]))
+                for plugin in selected:
                     self._queue_files(plugin.find("files"))
                     for flag in plugin.findall("conditionFlags/flag"):
                         self.flags[flag.get("name", "")] = (flag.text or "").strip()

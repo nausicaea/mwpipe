@@ -39,6 +39,14 @@ class Mod:
     patches: dict | None = None
     instructions: str = ""
     overrides: dict = field(default_factory=dict)
+    domain: str = "morrowind"
+
+    @property
+    def list_url(self) -> str:
+        """The mod as it is written in a build-collection mod list."""
+        if self.source.get("type") == "nexus":
+            return f"https://www.nexusmods.com/{self.domain}/mods/{self.source.get('modId')}"
+        return self.source.get("url") or self.name
 
     @property
     def key(self) -> str:
@@ -83,7 +91,8 @@ class Collection:
             mod = Mod(index=i, name=m.get("name", f"mod{i}"), source=normalize_source(m.get("source") or {}),
                       optional=bool(m.get("optional")), phase=int(m.get("phase") or 0),
                       choices=m.get("choices"), hashes=m.get("hashes"), patches=m.get("patches"),
-                      instructions=m.get("instructions") or "")
+                      instructions=m.get("instructions") or "",
+                      domain=(m.get("domainName") or "morrowind").lower())
             # "mwpipe": {"data": [...]} is written by build-collection from "+ folder" lines; overrides.json wins.
             configured = overrides.get("mods", {}).get(mod.key) or overrides.get("mods", {}).get(mod.name, {})
             mod.overrides = {**(m.get("mwpipe") or {}), **configured}
