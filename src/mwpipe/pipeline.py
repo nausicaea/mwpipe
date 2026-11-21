@@ -50,8 +50,10 @@ def collection_dir_name(name: str) -> str:
 class Pipeline:
     def __init__(self, settings: Settings, client_factory=None, include_optional=False,
                  allow_missing=False, lowercase_dds=False, sort_mode="auto",
-                 delta_skip=("Cell", "Dialogue", "DialogueInfo"), enlightened_flames=False, plugins_only=False):
+                 delta_skip=("Cell", "Dialogue", "DialogueInfo"), enlightened_flames=False, plugins_only=False,
+                 show_options=False):
         self.s = settings
+        self.show_options = show_options  # log the FOMOD options and data folders each archive offers
         self.plugins_only = plugins_only  # keep only plugin files of installed mods (build-collection's private copy)
         self._client_factory = client_factory
         self._client: NexusClient | None = None
@@ -238,6 +240,8 @@ class Pipeline:
             if previous and previous["spec"] == spec and all(Path(r).is_dir() for r in previous["roots"]):
                 if self.plugins_only and not self.s.dry_run:
                     prune_to_plugins([Path(r) for r in previous["roots"]])  # also slims installs from before this existed
+                if self.show_options and previous.get("options"):  # recorded when it was installed
+                    log.info("\n".join(previous["options"]))
                 installed[mod.key] = previous
                 continue
             if mod.patches:
@@ -245,12 +249,16 @@ class Pipeline:
             log.info("installing %s", mod.name)
             if self.s.dry_run:
                 continue
-            roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch")
+            hints: list[str] = []
+            roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch", hints if self.show_options else None)
+            if hints:
+                log.info("\n".join(hints))
             if self.plugins_only:
                 prune_to_plugins(roots)
             elif self.lowercase_dds:
                 lowercase_textures(mod_dir)
-            installed[mod.key] = {"name": mod.name, "spec": spec, "roots": [str(r) for r in roots]}
+            installed[mod.key] = {"name": mod.name, "spec": spec, "roots": [str(r) for r in roots],
+                                  **({"options": hints} if hints else {})}
             save_json(self.manifest_file, {**manifest, **installed})
         # Remember the data order for `configure`; drop mods no longer in the collection.
         if not self.s.dry_run:

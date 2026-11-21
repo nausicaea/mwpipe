@@ -44,6 +44,8 @@ class FomodInstaller:
         self.choices = choices or []
         self.flags: dict[str, str] = {}
         self.planned: list[_Install] = []
+        self.report: list[tuple[str, str, str, list[tuple[str, bool]]]] = []  # (step, group, type, [(option, chosen)])
+        self._used: set[tuple[str, str]] = set()   # (step, group) pairs that recorded choices applied to
 
     # -- conditions ------------------------------------------------------------------------------
     def _deps_met(self, deps: ET.Element | None) -> bool:
@@ -89,6 +91,7 @@ class FomodInstaller:
         plugins = group.findall("plugins/plugin")
         recorded = self._recorded(step, group.get("name", ""))
         if recorded is not None:
+            self._used.add((step, group.get("name", "")))
             chosen = []
             for choice in recorded:
                 by_name = [p for p in plugins if p.get("name") == choice.get("name")]
@@ -97,6 +100,8 @@ class FomodInstaller:
                     chosen.append(by_name[0])
                 elif isinstance(idx, int) and 0 <= idx < len(plugins):
                     chosen.append(plugins[idx])
+                else:
+                    log.warning("FOMOD: option %r not found in %s > %s", choice.get("name"), step, group.get("name"))
             return chosen
         kind = group.get("type", "SelectAny")
         if kind == "SelectAll":
@@ -129,13 +134,21 @@ class FomodInstaller:
             if not self._deps_met(step.find("visible")):
                 continue
             for group in step.findall("optionalFileGroups/group"):
-                for plugin in self._select(step.get("name", ""), group):
+                selected = self._select(step.get("name", ""), group)
+                self.report.append((step.get("name", ""), group.get("name", ""), group.get("type", "SelectAny"),
+                                    [(p.get("name", ""), p in selected) for p in group.findall("plugins/plugin")]))
+                for plugin in selected:
                     self._queue_files(plugin.find("files"))
                     for flag in plugin.findall("conditionFlags/flag"):
                         self.flags[flag.get("name", "")] = (flag.text or "").strip()
         for pattern in self.root.findall("conditionalFileInstalls/patterns/pattern"):
             if self._deps_met(pattern.find("dependencies")):
                 self._queue_files(pattern.find("files"))
+        for s in self.choices:
+            for g in s.get("groups", []):
+                if (s.get("name"), g.get("name")) not in self._used:
+                    log.warning("FOMOD: no step %r with group %r (hidden or misspelled); choices ignored",
+                                s.get("name"), g.get("name"))
         return self.planned
 
     def install(self, dest: Path) -> None:

@@ -21,7 +21,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from mwpipe.modlist import ModEntry, parse_mod_list
+from mwpipe.modlist import ModEntry, Pick, parse_mod_list
 from mwpipe.nexus import NexusClient, download, filename_from_url
 from mwpipe.pipeline import BASE_MASTERS, Pipeline, _plugins_by_name, collection_dir_name
 from mwpipe.settings import Settings
@@ -46,6 +46,25 @@ class ListedMod:
     size: int | None = None
     archive: Path | None = None
     md5: str | None = None
+    data: list[str] = dataclasses.field(default_factory=list)   # archive folders picked by "+ url | folder" lines
+    fomod: list[tuple] = dataclasses.field(default_factory=list)  # (step, group, option) from "+ url | a > b > c"
+
+    @property
+    def choices(self) -> dict | None:
+        """The picks in Vortex's collection.json format (names only; Vortex's option index is not known here)."""
+        steps: dict[str, dict[str, list]] = {}
+        for step, group, option in self.fomod:
+            steps.setdefault(step, {}).setdefault(group, []).append({"name": option})
+        if not steps:
+            return None
+        return {"type": "fomod", "options": [
+            {"name": step, "groups": [{"name": group, "choices": options} for group, options in groups.items()]}
+            for step, groups in steps.items()]}
+
+    @property
+    def override_key(self) -> str:
+        """The key under which collection.Mod looks up this mod's overrides."""
+        return f"{self.entry.mod_id}-{self.file_id}" if self.entry.is_nexus else self.name
 
     @property
     def cache_key(self) -> str:
@@ -195,6 +214,29 @@ def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], i
         save_json(index_file, index)
 
 
+def apply_picks(picks: list[Pick], mods: list[ListedMod]) -> None:
+    """Give each `+` line to the file it names. This needs the resolved file ids: a list line without
+    file_id stands for the mod's primary file."""
+    problems = []
+    for pick in picks:
+        found = [m for m in mods if pick.applies_to(m.entry.game, m.entry.mod_id, m.file_id, m.entry.url)]
+        if not found:
+            ids = [str(m.file_id) for m in mods if pick.ref.is_nexus
+                   and (m.entry.game, m.entry.mod_id) == (pick.ref.game, pick.ref.mod_id)]
+            if ids:  # the mod is there, but not that file
+                problems.append(f"line {pick.line}: file {pick.ref.file_id} of that mod is not in the list "
+                                f"(it has {', '.join(ids)}): {pick.ref.url}")
+            else:
+                log.warning("line %d: '+' of a mod left out of the collection is ignored: %s", pick.line, pick.ref.url)
+            continue
+        if pick.folder:
+            found[0].data.append(pick.folder)
+        else:
+            found[0].fomod.append(pick.option)
+    if problems:
+        raise PipelineError("Invalid mod list:\n  " + "\n  ".join(problems))
+
+
 # -- manifests -------------------------------------------------------------------------------------
 def v3_manifest(info: dict, mods: list[ListedMod], game: str) -> dict:
     """The `collection_manifest` object of the v3 API (snake_case, no load order fields)."""
@@ -229,8 +271,13 @@ def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: li
             source |= {"modId": m.entry.mod_id, "fileId": m.file_id}
         else:
             source["url"] = m.entry.url
-        entries.append({"name": m.name, "version": m.version, "optional": False, "domainName": game,
-                        "author": m.author or "", "source": source})
+        entry = {"name": m.name, "version": m.version, "optional": False, "domainName": game,
+                 "author": m.author or "", "source": source}
+        if m.data:  # not part of Vortex's format; mwpipe reads it back, other tools ignore unknown keys
+            entry["mwpipe"] = {"data": m.data}
+        if m.choices:
+            entry["choices"] = m.choices
+        entries.append(entry)
     return {"info": {camel[k]: v for k, v in info.items() if v}, "mods": entries, "modRules": [],
             "loadOrder": [{"id": n, "name": n, "enabled": True} for n in load_order]
                          + [{"id": n, "name": n, "enabled": False} for n in disabled]}
@@ -292,11 +339,14 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     # A private pipeline: own state, openmw.cfg and ModData, so the user's real setup (including an installed
     # ModData/<collection name> from `mwpipe run`) is never touched.
     build_dir.mkdir(parents=True, exist_ok=True)
-    save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules})  # your own overrides.json is not used
+    apply_picks(parsed.picks, mods)
+    chosen = {m.override_key: {"data": m.data} for m in mods if m.data}
+    # your own overrides.json is not used
+    save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules, "mods": chosen})
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
                                   mods_dir=build_dir / "ModData", generated_dir=build_dir / "Generated",
                                   overrides_file=build_dir / "overrides.json", dry_run=False)
-    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox", plugins_only=True)
+    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox", plugins_only=True, show_options=True)
     scratch.ensure_dirs()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -305,7 +355,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
 
     draft_dir = build_dir / "draft"
     draft_dir.mkdir(parents=True, exist_ok=True)
-    draft = vortex_manifest({"name": name}, mods, game, [])
+    draft = vortex_manifest({"name": name}, mods, game, [])  # carries the '+' picks the install reads
     save_json(draft_dir / "collection.json", draft)
     save_json(pipe.current_file, {"slug": slug, "game": game, "revision": 0, "name": name,
                                   "dir": str(draft_dir.relative_to(build_dir))})
