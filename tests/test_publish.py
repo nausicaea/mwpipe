@@ -138,6 +138,14 @@ class TestBuildCollection(unittest.TestCase):
             downloads.extend(c.args[0] for c in dl.call_args_list)
         return client, result
 
+    def test_build_never_touches_the_real_moddata(self):
+        existing = self.s.mods_dir / "my-test-list/000 Mod/keep.txt"  # what `mwpipe run` installed
+        existing.parent.mkdir(parents=True)
+        existing.write_text("mine")
+        self.run_build("https://www.nexusmods.com/morrowind/mods/1\n", name="My Test List", upload=False)
+        self.assertEqual(sorted(p.name for p in self.s.mods_dir.rglob("*") if p.is_file()), ["keep.txt"])
+        self.assertTrue(any((self.s.state_dir / "builds/my-test-list/ModData").rglob("*.esp")))
+
     def test_collection_id_without_name_uses_recorded_name(self):
         text = "https://www.nexusmods.com/morrowind/mods/1\n"
         _, first = self.run_build(text, name="Vanilla Cut", summary="s")
