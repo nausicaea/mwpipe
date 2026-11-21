@@ -45,7 +45,8 @@ class Mod:
     def list_url(self) -> str:
         """The mod as it is written in a build-collection mod list."""
         if self.source.get("type") == "nexus":
-            return f"https://www.nexusmods.com/{self.domain}/mods/{self.source.get('modId')}"
+            url = f"https://www.nexusmods.com/{self.domain}/mods/{self.source.get('modId')}"
+            return f"{url}?tab=files&file_id={self.source['fileId']}" if self.source.get("fileId") else url
         return self.source.get("url") or self.name
 
     @property

@@ -36,8 +36,22 @@ class ModList:
     entries: list["ModEntry"]
     disabled: list[str]   # plugin file names from "- name" lines
     rules: list[str] = field(default_factory=list)   # mlox rule blocks from "! a < b" lines
-    variants: dict = field(default_factory=dict)     # ModEntry.ident -> archive folders from "+ url | folder" lines
-    choices: dict = field(default_factory=dict)      # ModEntry.ident -> (step, group, option) from "+ url | a > b > c"
+    picks: list["Pick"] = field(default_factory=list)   # "+ url | ..." lines; a mod is matched once file ids are known
+
+
+@dataclass(frozen=True)
+class Pick:
+    """A "+ url | folder" or "+ url | Step > Group > Option" line."""
+    line: int
+    ref: "ModEntry"
+    folder: str | None = None
+    option: tuple | None = None   # (step, group, option)
+
+    def applies_to(self, game, mod_id, file_id, url=None) -> bool:
+        """Does this pick name the mod (and, if the line gave one, the file) with these ids?"""
+        if not self.ref.is_nexus:
+            return url == self.ref.url
+        return (game, mod_id) == (self.ref.game, self.ref.mod_id) and self.ref.file_id in (None, file_id)
 
 
 @dataclass(frozen=True)
@@ -122,15 +136,13 @@ def parse_mod_list(text: str) -> ModList:
             continue
         seen.add(key)
         entries.append(entry)
-    variants: dict = {}
-    choices: dict = {}
+    parsed_picks: list[Pick] = []
     for number, ref, what in picks:
-        found = [e for e in entries if e.ident == ref.ident or (
-            ref.is_nexus and e.is_nexus and (e.game, e.mod_id) == (ref.game, ref.mod_id) and ref.file_id is None)]
-        if not found:
+        same = [e for e in entries if (e.game, e.mod_id) == (ref.game, ref.mod_id) and (e.is_nexus or e.url == ref.url)]
+        if not same:
             errors.append(f"line {number}: '+' names a mod that is not in the list: {ref.url}")
             continue
-        if len(found) > 1:
+        if ref.is_nexus and ref.file_id is None and len(same) > 1:
             errors.append(f"line {number}: '+' matches several files of that mod, add ?file_id=N: {ref.url}")
             continue
         if ">" in what:
@@ -138,9 +150,9 @@ def parse_mod_list(text: str) -> ModList:
             if len(parts) != 3 or not all(parts):
                 errors.append(f"line {number}: a FOMOD choice is 'step > group > option'")
                 continue
-            choices.setdefault(found[0].ident, []).append(parts)
+            parsed_picks.append(Pick(number, ref, option=parts))
         else:
-            variants.setdefault(found[0].ident, []).append(what)
+            parsed_picks.append(Pick(number, ref, folder=what))
     if errors:
         raise PipelineError("Invalid mod list:\n  " + "\n  ".join(errors))
     if not entries:
@@ -148,4 +160,4 @@ def parse_mod_list(text: str) -> ModList:
     games = {e.game for e in entries if e.is_nexus}
     if len(games) > 1:
         raise PipelineError(f"A collection belongs to one game, but the list mixes: {', '.join(sorted(games))}")
-    return ModList(entries, disabled, rules, variants, choices)
+    return ModList(entries, disabled, rules, parsed_picks)

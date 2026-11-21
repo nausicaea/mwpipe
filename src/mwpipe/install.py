@@ -74,17 +74,17 @@ def install_from_hashes(tree: Path, hashes: list[dict], dest: Path) -> int:
     return copied
 
 
-def _fomod_hints(mod: Mod, installer: FomodInstaller) -> list[str]:
-    lines = [f"FOMOD options of {mod.name}; [x] is installed now. To choose, add to the mod list: "
+def _fomod_hints(mod: Mod, archive_name: str, installer: FomodInstaller) -> list[str]:
+    lines = [f"FOMOD options of {mod.name} ({archive_name}); [x] is installed now. To choose, add to the mod list: "
              f"+ {mod.list_url} | Step > Group > Option"]
     for step, group, kind, options in installer.report:
         lines += [f"  [{'x' if chosen else ' '}] {step} > {group} > {name}   ({kind})" for name, chosen in options]
     return lines
 
 
-def _folder_hints(mod: Mod, tree: Path, roots: list[Path], picked: list[Path]) -> list[str]:
+def _folder_hints(mod: Mod, archive_name: str, tree: Path, roots: list[Path], picked: list[Path]) -> list[str]:
     chosen = {r.resolve() for r in picked}
-    lines = [f"{mod.name} has {len(roots)} data folders; [x] is installed now. To choose, add to the mod list: "
+    lines = [f"{mod.name} ({archive_name}) has {len(roots)} data folders; [x] is installed now. To choose, add to the mod list: "
              f"+ {mod.list_url} | <folder>"]
     return lines + [f"  [{'x' if r.resolve() in chosen else ' '}] {r.relative_to(tree).as_posix()}" for r in roots]
 
@@ -107,7 +107,7 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
                     raise PipelineError(f"{mod.name}: override data folder {rel!r} not in archive")
                 roots.append(found)
             if hints is not None and len(candidates := find_data_roots(tree)) > 1:
-                hints += _folder_hints(mod, tree, candidates, roots)
+                hints += _folder_hints(mod, archive.name, tree, candidates, roots)
             return _move_roots(roots, mod_dir)
 
         if (config := find_module_config(tree)) and (mod.choices or {}).get("type", "fomod") == "fomod":
@@ -115,7 +115,7 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
             installer = FomodInstaller(config, (mod.choices or {}).get("options"))
             installer.install(mod_dir)
             if hints is not None:
-                hints += _fomod_hints(mod, installer)
+                hints += _fomod_hints(mod, archive.name, installer)
             return [mod_dir]
 
         if mod.hashes:
@@ -131,7 +131,7 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
             log.warning("%s: %d candidate data folders, adding all: %s (pin with overrides 'data')",
                         mod.name, len(roots), ", ".join(str(r.relative_to(tree)) for r in roots))
         if hints is not None and len(roots) > 1:
-            hints += _folder_hints(mod, tree, roots, roots)
+            hints += _folder_hints(mod, archive.name, tree, roots, roots)
         return _move_roots(roots, mod_dir)
     finally:
         shutil.rmtree(scratch / "extract", ignore_errors=True)

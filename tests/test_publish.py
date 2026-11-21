@@ -55,9 +55,8 @@ class TestModList(unittest.TestCase):
                 "+ nxm://morrowind/mods/1 | 02 Vanilla style  # note\n"
                 "+ https://www.nexusmods.com/morrowind/mods/2?file_id=22 | Main > Textures > 2K\n")
         parsed = parse_mod_list(text)
-        first, second = parsed.entries
-        self.assertEqual(parsed.variants, {first.ident: ["00 Core", "02 Vanilla style"]})
-        self.assertEqual(parsed.choices, {second.ident: [("Main", "Textures", "2K")]})
+        self.assertEqual([(p.ref.mod_id, p.folder, p.option) for p in parsed.picks],
+                         [(1, "00 Core", None), (1, "02 Vanilla style", None), (2, None, ("Main", "Textures", "2K"))])
 
     def test_bad_pick_lines(self):
         mod = "https://www.nexusmods.com/morrowind/mods/1\n"
@@ -295,7 +294,7 @@ class TestBuildCollection(unittest.TestCase):
             with self.assertLogs("mwpipe", "INFO") as again:  # the unchanged mod is not installed again, still listed
                 publish.build_collection(self.s, FakeClient(), text, name="Variants", upload=False)
         for output in ("\n".join(logs.output), "\n".join(again.output)):
-            self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1 | <folder>", output)
+            self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1?tab=files&file_id=10 | <folder>", output)
             self.assertIn("[x] 00 Core", output)
             self.assertIn("[ ] 01 Alt", output)
             self.assertIn("[x] 02 Patch", output)
@@ -307,6 +306,28 @@ class TestBuildCollection(unittest.TestCase):
         self.assertEqual(coll.mods[0].overrides["data"], ["00 Core", "02 patch"])
         coll = Collection.load(out / "collection.json", {"mods": {"1-10": {"data": ["01 Alt"]}}}, include_optional=False)
         self.assertEqual(coll.mods[0].overrides["data"], ["01 Alt"])
+
+    def test_picks_for_several_files_of_one_mod(self):
+        def variants(url, dest, md5=None):
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr(f"00 {Path(url).stem}/a.esp", "a")
+                zf.writestr(f"01 {Path(url).stem}/b.esp", "b")
+            return dest
+        # mod 1 is listed twice: the primary file (id 10, no file_id on the line) and file 11
+        text = ("https://www.nexusmods.com/morrowind/mods/1\nhttps://www.nexusmods.com/morrowind/mods/1?file_id=11\n"
+                "+ https://www.nexusmods.com/morrowind/mods/1?tab=files&file_id=10 | 01 1-10\n"   # what the hint prints
+                "+ https://www.nexusmods.com/morrowind/mods/1?file_id=11 | 00 1-11\n")
+        with mock.patch.object(publish, "download", side_effect=variants), \
+                mock.patch.object(tools, "run", side_effect=lambda cmd, cfg, cwd, dry=False: None):
+            result = publish.build_collection(self.s, FakeClient(), text, name="Two Files", upload=False)
+        out = Path(result["output_dir"])
+        coll = Collection.load(out / "collection.json", {}, include_optional=False)
+        self.assertEqual({m.key: m.overrides["data"] for m in coll.mods}, {"1-10": ["01 1-10"], "1-11": ["00 1-11"]})
+        with self.assertRaises(PipelineError) as ctx:  # a file id the list does not have
+            with mock.patch.object(publish, "download", side_effect=variants):
+                publish.build_collection(self.s, FakeClient(), text + "+ https://www.nexusmods.com/morrowind/mods/1?file_id=12 | x\n",
+                                         name="Two Files", upload=False)
+        self.assertIn("file 12", str(ctx.exception))
 
     def test_fomod_choices_are_applied_and_recorded(self):
         xml = """<config><installSteps><installStep name="Main"><optionalFileGroups>
@@ -328,7 +349,7 @@ class TestBuildCollection(unittest.TestCase):
         output = "\n".join(logs.output)
         self.assertIn("[ ] Main > Pick > A", output)
         self.assertIn("[x] Main > Pick > B", output)
-        self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1 | Step > Group > Option", output)
+        self.assertIn("+ https://www.nexusmods.com/morrowind/mods/1?tab=files&file_id=10 | Step > Group > Option", output)
         out = Path(result["output_dir"])
         self.assertEqual((out / "load-order.txt").read_text().split(), ["Morrowind.esm", "b.esp"])
         bundle = json.loads((out / "collection.json").read_text())

@@ -70,7 +70,8 @@ v3 API to the mod's primary file. A mod with several wanted files (say separate 
 the log lists them with their ids. Any other `https://` URL becomes a "direct" download, which
 the collection installer fetches from that URL.
 A line `+ <mod url> | <what>` configures one mod of the list, named by its URL (the file id is optional
-unless the list holds several files of that mod). These lines can go anywhere, for instance all at the
+unless the list holds several files of that mod; a URL without one names the mod's primary file, and
+the listing below prints each mod with its file id). These lines can go anywhere, for instance all at the
 end. `<what>` is either an archive folder, for archives that ship alternative data folders (`+ <url> | 00 Core`,
 one line per folder, relative to the archive root, case-insensitive; without any, all candidate folders are
 installed), or `Step > Group > Option`, an option of the mod's FOMOD installer (`+ <url> | Main > Textures > 2K`;

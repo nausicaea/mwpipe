@@ -21,7 +21,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from mwpipe.modlist import ModEntry, parse_mod_list
+from mwpipe.modlist import ModEntry, Pick, parse_mod_list
 from mwpipe.nexus import NexusClient, download, filename_from_url
 from mwpipe.pipeline import BASE_MASTERS, Pipeline, _plugins_by_name, collection_dir_name
 from mwpipe.settings import Settings
@@ -214,6 +214,29 @@ def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], i
         save_json(index_file, index)
 
 
+def apply_picks(picks: list[Pick], mods: list[ListedMod]) -> None:
+    """Give each `+` line to the file it names. This needs the resolved file ids: a list line without
+    file_id stands for the mod's primary file."""
+    problems = []
+    for pick in picks:
+        found = [m for m in mods if pick.applies_to(m.entry.game, m.entry.mod_id, m.file_id, m.entry.url)]
+        if not found:
+            ids = [str(m.file_id) for m in mods if pick.ref.is_nexus
+                   and (m.entry.game, m.entry.mod_id) == (pick.ref.game, pick.ref.mod_id)]
+            if ids:  # the mod is there, but not that file
+                problems.append(f"line {pick.line}: file {pick.ref.file_id} of that mod is not in the list "
+                                f"(it has {', '.join(ids)}): {pick.ref.url}")
+            else:
+                log.warning("line %d: '+' of a mod left out of the collection is ignored: %s", pick.line, pick.ref.url)
+            continue
+        if pick.folder:
+            found[0].data.append(pick.folder)
+        else:
+            found[0].fomod.append(pick.option)
+    if problems:
+        raise PipelineError("Invalid mod list:\n  " + "\n  ".join(problems))
+
+
 # -- manifests -------------------------------------------------------------------------------------
 def v3_manifest(info: dict, mods: list[ListedMod], game: str) -> dict:
     """The `collection_manifest` object of the v3 API (snake_case, no load order fields)."""
@@ -316,12 +339,8 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     # A private pipeline: own state, openmw.cfg and ModData, so the user's real setup (including an installed
     # ModData/<collection name> from `mwpipe run`) is never touched.
     build_dir.mkdir(parents=True, exist_ok=True)
-    for m in mods:
-        m.data = parsed.variants.get(m.entry.ident, [])
-        m.fomod = parsed.choices.get(m.entry.ident, [])
+    apply_picks(parsed.picks, mods)
     chosen = {m.override_key: {"data": m.data} for m in mods if m.data}
-    for ident in (set(parsed.variants) | set(parsed.choices)) - {m.entry.ident for m in mods}:
-        log.warning("'+' lines of a mod left out of the collection are ignored: %s", ident)
     # your own overrides.json is not used
     save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules, "mods": chosen})
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
