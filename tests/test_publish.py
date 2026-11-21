@@ -77,6 +77,9 @@ class FakeClient(NexusClient):
         return {"name": f"Mod {mod_id}", "version": "1.0", "author": "Someone", "adult_content": mod_id == 2,
                 "main_file_version": {"game_scoped_id": str(mod_id * 10)} if mod_id != 4 else None}
 
+    def mod_files(self, game, mod_id):
+        return []
+
     def file_version(self, game, file_id):
         return {"version": f"v{file_id}", "size_in_bytes": len(zip_bytes(f"{file_id // 10}-{file_id}"))}
 
@@ -326,6 +329,49 @@ class TestBuildCollection(unittest.TestCase):
         files = [p.name for d in (self.s.mods_dir, self.s.state_dir / "builds/slim-list/ModData")
                  for p in d.rglob("*") if p.is_file()]
         self.assertEqual(files, ["a.esp"])
+
+
+class TestFileHint(unittest.TestCase):
+    FILES = [{"file_id": 10, "name": "BH_FIX", "category_name": "MAIN"},
+             {"file_id": 11, "name": "Textures", "category_name": "OPTIONAL"},
+             {"file_id": 12, "name": "Meshes", "category_name": "OPTIONAL"},
+             {"file_id": 9, "name": "Old", "category_name": "OLD_VERSION"},
+             {"file_id": 8, "name": "Update", "category_name": "UPDATE"}]
+
+    def resolve(self, text, files):
+        client = FakeClient()
+        client.mod_files = lambda game, mod_id: files
+        return publish.resolve(client, parse_mod_list(text).entries, allow_missing=False)
+
+    def test_hint_lists_the_current_files(self):
+        with self.assertLogs("mwpipe", "INFO") as logs:
+            self.resolve("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES)
+        hint = next(line for line in logs.output if "no file_id given" in line)
+        self.assertIn("Mod 1 (mod 1):", hint)
+        self.assertIn("primary file BH_FIX (10)", hint)
+        self.assertIn("3 files", hint)
+        self.assertIn("Meshes (12)", hint)
+        self.assertNotIn("Old", hint)
+
+    def test_same_display_name_is_told_apart_and_long_lists_are_cut(self):
+        files = [{"file_id": 20 + i, "name": "Icons", "file_name": f"icons-{i}.7z", "category_name": "MAIN"}
+                 for i in range(8)]
+        with self.assertLogs("mwpipe", "INFO") as logs:
+            self.resolve("https://www.nexusmods.com/morrowind/mods/1\n", files + [dict(self.FILES[0], file_id=99)])
+        hint = next(line for line in logs.output if "no file_id given" in line)
+        self.assertIn("Icons [icons-0.7z] (20)", hint)
+        self.assertIn("Icons [icons-5.7z] (25)", hint)
+        self.assertNotIn("icons-6", hint)
+        self.assertIn(", and 3 more. Add ?file_id=N", hint)
+        self.assertNotIn("...", hint)
+
+    def test_no_hint_when_pinned_or_single_file(self):
+        for text, files in [("https://www.nexusmods.com/morrowind/mods/1?file_id=10\n", self.FILES),
+                            ("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES[:1] + self.FILES[3:]),
+                            ("https://www.nexusmods.com/morrowind/mods/1\n", [])]:
+            with self.assertLogs("mwpipe", "INFO") as logs:
+                self.resolve(text, files)
+            self.assertFalse(any("no file_id given" in line for line in logs.output), text)
 
 
 class TestBundle(unittest.TestCase):

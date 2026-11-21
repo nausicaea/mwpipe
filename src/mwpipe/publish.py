@@ -65,6 +65,28 @@ def direct_name(url: str) -> str:
     return parts.hostname or "download"
 
 
+def _file_choices_hint(client: NexusClient, entry: ModEntry, mod_name: str, picked: int) -> None:
+    """Say so when a line without file_id took the primary file but the mod offers other current files."""
+    files = [f for f in client.mod_files(entry.game, entry.mod_id)
+             if f.get("category_name") in ("MAIN", "OPTIONAL") and f.get("file_id") is not None]
+    if len(files) < 2:
+        return
+    names = [f.get("name") or f.get("file_name") or "file" for f in files]
+
+    def label(f: dict) -> str:  # files sharing a display name are told apart by their file name or version
+        name = f.get("name") or f.get("file_name") or "file"
+        if names.count(name) > 1:
+            extra = f.get("file_name") or f.get("version")
+            if extra and extra != name:
+                name = f"{name} [{extra}]"
+        return f"{name} ({f['file_id']})"
+
+    primary = next((label(f) for f in files if f["file_id"] == picked), str(picked))
+    shown = ", ".join(label(f) for f in files[:6]) + (f", and {len(files) - 6} more" if len(files) > 6 else "")
+    log.info("%s (mod %d): no file_id given, using the primary file %s; the mod offers %d files: %s. "
+             "Add ?file_id=N to pick one or more.", mod_name, entry.mod_id, primary, len(files), shown)
+
+
 def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -> list[ListedMod]:
     mods: list[ListedMod] = []
     problems: list[str] = []
@@ -80,6 +102,7 @@ def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -
                 if not main:
                     raise PipelineError("it has no downloadable main file (none passed the security scan)")
                 file_id = int(main["game_scoped_id"])
+                _file_choices_hint(client, entry, page["name"], file_id)
             version = client.file_version(entry.game, file_id)
             mods.append(ListedMod(entry, page["name"], version.get("version") or page.get("version") or "unknown",
                                   page.get("author"), bool(page.get("adult_content")), file_id,
