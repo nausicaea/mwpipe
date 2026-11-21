@@ -20,6 +20,7 @@ from mwpipe.nexus import ApiError, CollectionRef, NexusClient, encode_url, parse
 from mwpipe.openmw_cfg import OpenMWConfig, import_ini_fallbacks, quote, unquote  # noqa: E402
 from mwpipe.pipeline import Pipeline, _drop_missing_masters, _needs_lua_records, collection_dir_name, plugin_masters  # noqa: E402
 from mwpipe.settings import Settings, default_dirs  # noqa: E402
+from mwpipe.textures import bsa_names, scan_missing_textures, texture_refs  # noqa: E402
 
 
 def touch(path: Path, data: bytes = b"x") -> Path:
@@ -310,6 +311,64 @@ class TestPloxRules(TempDir):
         pipe = Pipeline(s)
         pipe.configure()
         self.assertEqual(OpenMWConfig.load(s.openmw_cfg).content, order)
+
+
+def nif(*textures: str) -> bytes:
+    """A stand-in for a NIF: binary noise around length-prefixed texture names."""
+    return b"NIF\x00" + b"".join(b"\x01\x00\x00\x00" + bytes([len(t)]) + t.encode() + b"\x00\x00\x00" for t in textures)
+
+
+def bsa(names: list[str]) -> bytes:
+    import struct
+    block = b"".join(n.encode() + b"\0" for n in names)
+    count = len(names)
+    return (struct.pack("<III", 0x100, 12 * count + len(block), count)
+            + bytes(8 * count) + bytes(4 * count) + block + bytes(8 * count))  # records, offsets, names, hashes
+
+
+class TestMissingTextures(TempDir):
+    def test_refs_strip_length_prefix_and_textures_dir(self):
+        refs = texture_refs(nif("bh\\Bh_Fp_Hair_07.tga", "textures\\tx_a.dds", "(dummy name with len 0x28).bmp"))
+        self.assertIn("bh/bh_fp_hair_07", refs)
+        self.assertIn("tx_a", refs)
+
+    def test_bsa_names(self):
+        path = touch(self.tmp / "a.bsa", bsa(["textures\\tx_a.dds", "meshes\\m.nif"]))
+        self.assertEqual(bsa_names(path), ["textures\\tx_a.dds", "meshes\\m.nif"])
+        self.assertEqual(bsa_names(touch(self.tmp / "junk.bsa", b"x")), [])
+
+    def test_missing_found_per_mod_and_shadowed_meshes_ignored(self):
+        mods = self.tmp / "ModData"
+        a, b = mods / "coll/000 A", mods / "coll/001 B"
+        touch(a / "Meshes/hair.nif", nif("hair_ok.tga", "hair_gone.dds"))
+        touch(a / "Textures/Hair_OK.DDS")                       # .tga reference, .dds on disk, other case
+        touch(a / "Meshes/old.nif", nif("only_in_old.dds"))
+        touch(b / "meshes/OLD.nif", nif("tx_bsa.dds"))          # overrides A's mesh; its texture is in a BSA
+        archive = touch(self.tmp / "base.bsa", bsa(["textures\\tx_bsa.dds"]))
+        result = scan_missing_textures([a, b], [archive], mods)
+        self.assertEqual(list(result.missing), ["hair_gone"])
+        self.assertEqual(result.missing["hair_gone"], [("000 A", "hair.nif")])
+        self.assertEqual(result.by_mod(), {"000 A": ["hair_gone"]})
+
+
+class TestTexturesStep(TempDir):
+    def test_step_reports_and_writes_list(self):
+        args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
+                               morrowind_data=None, mods_dir=None, downloads_dir=None,
+                               generated_dir=None, cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
+        s = Settings.from_args(args)
+        s.ensure_dirs()
+        mod = s.mods_dir / "coll/000 Facelift"
+        touch(mod / "meshes/b/hair.nif", nif("bh\\bh_fp_hair.tga"))
+        cfg = OpenMWConfig.load(s.openmw_cfg)
+        cfg.data = [s.morrowind_data, mod, s.generated_dir]
+        cfg.save(s.openmw_cfg, s.state_dir / "backups")
+        with self.assertLogs("mwpipe", "WARNING") as logs:
+            Pipeline(s).textures()
+        self.assertTrue(any("000 Facelift: 1 missing" in line for line in logs.output))
+        listing = (s.state_dir / "missing-textures.txt").read_text()
+        self.assertIn("bh/bh_fp_hair\t000 Facelift\tb/hair.nif", listing)
 
 
 class TestNexusClient(unittest.TestCase):
