@@ -37,7 +37,7 @@ ARG TES3CMD_COMMIT=f72e9ed9dd18e8545dd0dc2a4056c250cf505790
 ADD https://github.com/john-moonsugar/tes3cmd.git#${TES3CMD_COMMIT} /
 
 # ---- Runtime -------------------------------------------------------------------------------------
-FROM python:3.13-alpine
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 # Alpine packages are not version-pinned: Alpine drops old versions from its mirrors, so pins
 # break builds within weeks. The base image digest (Renovate) is what moves them forward.
 RUN apk add --no-cache perl 7zip libarchive-tools
