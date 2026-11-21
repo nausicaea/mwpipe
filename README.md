@@ -14,6 +14,7 @@ collection URL / nxm link
   -> delta        delta_plugin merge  -> Generated/delta-merged.omwaddon
   -> groundcover  GOCoverify          -> Generated/deleted_groundcover.omwaddon, groundcover.omwaddon, meshes/
   -> lightfix     Lumenaire           -> Generated/Lumenaire.omwaddon
+  -> textures     report textures that meshes use but no mod or BSA provides, and which mod uses them
 ```
 
 Every step can be re-run safely: archives are verified by MD5 and cached, mods are only
@@ -158,7 +159,7 @@ mwpipe's own files, in Docker:
 | | Where | Holds |
 | --- | --- | --- |
 | cache | named volume `mwpipe_cache`, `/cache` | `downloads/` (archive cache), `archives.json` (which mod is which file), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
-| state | named volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
+| state | named volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `missing-textures.txt` (from the `textures` step), `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
 | config | `./config/overrides.json` and `./config/lumenaire.toml`, mounted read-only on `/config` by compose's `configs:` | Yours to edit; mwpipe never writes them. Without a `lumenaire.toml` the packaged defaults are used. |
 
 The volumes survive `run --rm`; `docker compose down -v` deletes them, `docker volume ls` shows them.

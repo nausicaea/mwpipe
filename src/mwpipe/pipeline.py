@@ -10,6 +10,7 @@
   delta       delta_plugin merge  -> Generated/delta-merged.omwaddon
   groundcover GOCoverify          -> Generated/deleted_groundcover.omwaddon, groundcover.omwaddon, meshes/
   lightfix    Lumenaire           -> Generated/Lumenaire.omwaddon
+  textures    report textures that meshes use but no data folder or BSA provides (read-only)
 """
 
 from __future__ import annotations
@@ -29,10 +30,11 @@ from mwpipe.install import PLUGIN_EXTS, install_mod, lowercase_textures
 from mwpipe.nexus import CollectionRef, NexusClient, download, filename_from_url
 from mwpipe.openmw_cfg import OpenMWConfig, dedupe, import_ini_fallbacks
 from mwpipe.settings import Settings
+from mwpipe.textures import report as report_textures, scan_missing_textures
 from mwpipe.util import PipelineError, load_json, log, md5sum, save_json
 
 ALL_STEPS = ["fetch", "download", "install", "configure", "clean",
-             "sort", "delta", "groundcover", "lightfix"]
+             "sort", "delta", "groundcover", "lightfix", "textures"]
 DEFAULT_STEPS = [s for s in ALL_STEPS if s != "clean"]
 POSTPROCESS_STEPS = ["sort", "delta", "groundcover", "lightfix"]
 BASE_MASTERS = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]
@@ -368,6 +370,15 @@ class Pipeline:
         tools.lumenaire(self.s.openmw_cfg, self.s.generated_dir, settings,
                         self.enlightened_flames, self.s.dry_run)
         self._register([tools.LIGHTS_OUTPUT])
+
+    def textures(self) -> None:
+        """Report textures the winning meshes refer to that nothing provides, and which mod asked for them."""
+        cfg = self.load_cfg()
+        wanted = {a.lower() for a in cfg.archives}
+        archives = [p for d in cfg.data if d.is_dir() for p in sorted(d.iterdir())
+                    if p.is_file() and p.name.lower() in wanted]
+        result = scan_missing_textures(cfg.data, archives, self.s.mods_dir)
+        report_textures(result, self.s.state_dir / "missing-textures.txt")
 
     def _register(self, content: list[str], groundcover: list[str] = ()) -> None:
         if not self.s.dry_run:
