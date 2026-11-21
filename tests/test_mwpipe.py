@@ -371,6 +371,35 @@ class TestTexturesStep(TempDir):
         self.assertIn("bh/bh_fp_hair\t000 Facelift\tb/hair.nif", listing)
 
 
+class TestFetchRefresh(TempDir):
+    def test_edited_revision_is_picked_up(self):
+        args = SimpleNamespace(data_dir=self.tmp / "data", openmw_cfg=self.tmp / "cfg/openmw.cfg",
+                               morrowind_data=None, mods_dir=None, downloads_dir=None,
+                               generated_dir=None, cache_dir=self.tmp / "cache", state_dir=self.tmp / "state",
+                               config_dir=self.tmp / "config", dry_run=False)
+        s = Settings.from_args(args)
+        s.ensure_dirs()
+        mods = [["A"]]
+
+        def fake_download(url, dest, md5=None):  # Nexus rewrites revision 1 in place
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("collection.json", json.dumps({"info": {"name": "C"}, "mods": [{"name": n} for n in mods[0]]}))
+            return dest
+
+        client = SimpleNamespace(require_premium=lambda: None,
+                                 collection_archive_url=lambda ref: ("https://example.org/dl", 1, "C"))
+        ref = CollectionRef("morrowind", "abc123", 1)
+        with mock.patch("mwpipe.pipeline.download", side_effect=fake_download):
+            pipe = Pipeline(s, client_factory=lambda: client)
+            pipe.fetch(ref)
+            self.assertEqual(len(pipe.collection().mods), 1)
+            mods[0] = ["A", "Facelift"]
+            with self.assertLogs("mwpipe", "INFO") as logs:
+                pipe.fetch(ref)
+        self.assertEqual([m.name for m in pipe.collection().mods], ["A", "Facelift"])
+        self.assertTrue(any("changed upstream" in line for line in logs.output))
+
+
 class TestNexusClient(unittest.TestCase):
     def client(self, responses):
         c = NexusClient("key")

@@ -163,8 +163,10 @@ class Pipeline:
         self.client.require_premium()  # fail before downloading anything
         url, revision, name = self.client.collection_archive_url(ref)
         archive = self.s.downloads_dir / f"collection-{ref.slug}-{revision}{Path(filename_from_url(url, 'x.7z')).suffix}"
-        if not archive.exists():
-            download(url, archive)
+        previous = md5sum(archive) if archive.exists() else None
+        download(url, archive)  # always: Nexus edits a draft revision in place, so a cached copy goes stale
+        if previous and previous != md5sum(archive):
+            log.info("collection %s revision %d changed upstream since the last run", ref.slug, revision)
         target = self.s.state_dir / "collections" / f"{ref.slug}-{revision}"
         extract(archive, target)
         manifest = next(target.rglob("collection.json"), None)
