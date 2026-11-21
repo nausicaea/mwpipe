@@ -271,7 +271,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules})  # your own overrides.json is not used
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
                                   overrides_file=build_dir / "overrides.json", dry_run=False)
-    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox")
+    pipe = Pipeline(scratch, client_factory=lambda: client, sort_mode="plox", plugins_only=True)
     scratch.ensure_dirs()
     out_dir.mkdir(parents=True, exist_ok=True)
 
