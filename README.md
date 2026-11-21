@@ -65,7 +65,9 @@ The reverse direction: turn a list of mod URLs into a collection on your own Nex
 
 `modlist.txt` has one URL per line, `#` starts a comment. Nexus mod pages (`/morrowind/mods/43931`,
 optionally `?file_id=N` to pin a file) and `nxm://.../mods/ID/files/ID` links resolve through the
-v3 API to the mod's primary file. Any other `https://` URL becomes a "direct" download, which
+v3 API to the mod's primary file. A mod with several wanted files (say separate textures and meshes) needs one
+`?file_id=N` line per file, in the order they should load; when a line has no `file_id` and the mod has other current files,
+the log lists them with their ids. Any other `https://` URL becomes a "direct" download, which
 the collection installer fetches from that URL.
 A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
 plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
