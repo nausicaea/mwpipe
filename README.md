@@ -5,7 +5,7 @@ The host needs Docker and nothing else.
 
 ```
 collection URL / nxm link
-  -> fetch        collection.json from Nexus (GraphQL v2, see "Nexus APIs")
+  -> fetch        collection.json from Nexus (GraphQL v2, see "Nexus APIs"); downloaded again on every run
   -> download     mod archives through the Nexus API v3 (requires Premium)
   -> install      extract to ModData/<collection-name-slug>/, FOMOD choices and "replicate" mode honoured
   -> configure    openmw.cfg: data=, fallback-archive=, content=, groundcover=, fallback=
