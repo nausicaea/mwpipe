@@ -7,6 +7,10 @@
   - k_weather (louder sounds).esp                                    leave this plugin out of the load order
   ! Distant_Seafloor_2.00.esm < Bloodmoon.esm                        load the first plugin before the second (plox rule)
 
+A plain mod URL takes the mod's primary file. A mod with several files (for example separate textures and meshes) needs
+one `?file_id=` line per wanted file, in the order they should load; `build-collection` logs a hint when a line without
+file_id leaves other current files of the mod unused.
+
 A mod that ships either/or plugins would otherwise enable all of them, which plox reports as a [CONFLICT].
 """
 

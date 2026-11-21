@@ -77,6 +77,9 @@ class FakeClient(NexusClient):
         return {"name": f"Mod {mod_id}", "version": "1.0", "author": "Someone", "adult_content": mod_id == 2,
                 "main_file_version": {"game_scoped_id": str(mod_id * 10)} if mod_id != 4 else None}
 
+    def mod_files(self, game, mod_id):
+        return []
+
     def file_version(self, game, file_id):
         return {"version": f"v{file_id}", "size_in_bytes": len(zip_bytes(f"{file_id // 10}-{file_id}"))}
 
@@ -299,6 +302,36 @@ class TestBuildCollection(unittest.TestCase):
         for bad in ("ab", "x" * 37):
             with self.assertRaises(PipelineError):
                 self.run_build("https://www.nexusmods.com/morrowind/mods/1", name=bad)
+
+
+class TestFileHint(unittest.TestCase):
+    FILES = [{"file_id": 10, "name": "BH_FIX", "category_name": "MAIN"},
+             {"file_id": 11, "name": "Textures", "category_name": "OPTIONAL"},
+             {"file_id": 12, "name": "Meshes", "category_name": "OPTIONAL"},
+             {"file_id": 9, "name": "Old", "category_name": "OLD_VERSION"},
+             {"file_id": 8, "name": "Update", "category_name": "UPDATE"}]
+
+    def resolve(self, text, files):
+        client = FakeClient()
+        client.mod_files = lambda game, mod_id: files
+        return publish.resolve(client, parse_mod_list(text).entries, allow_missing=False)
+
+    def test_hint_lists_the_current_files(self):
+        with self.assertLogs("mwpipe", "INFO") as logs:
+            self.resolve("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES)
+        hint = next(line for line in logs.output if "no file_id given" in line)
+        self.assertIn("primary file BH_FIX (10)", hint)
+        self.assertIn("3 files", hint)
+        self.assertIn("Meshes (12)", hint)
+        self.assertNotIn("Old", hint)
+
+    def test_no_hint_when_pinned_or_single_file(self):
+        for text, files in [("https://www.nexusmods.com/morrowind/mods/1?file_id=10\n", self.FILES),
+                            ("https://www.nexusmods.com/morrowind/mods/1\n", self.FILES[:1] + self.FILES[3:]),
+                            ("https://www.nexusmods.com/morrowind/mods/1\n", [])]:
+            with self.assertLogs("mwpipe", "INFO") as logs:
+                self.resolve(text, files)
+            self.assertFalse(any("no file_id given" in line for line in logs.output), text)
 
 
 class TestBundle(unittest.TestCase):

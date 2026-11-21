@@ -433,6 +433,13 @@ class TestNexusClient(unittest.TestCase):
             c.file_url("morrowind", 1, 2)
         self.assertEqual(c._api.call_count, 1)
 
+    def test_mod_files_parses_v1_and_tolerates_errors(self):
+        c = self.client([{"files": [{"file_id": 1, "name": "A"}, "junk"]}])
+        self.assertEqual(c.mod_files("morrowind", 5), [{"file_id": 1, "name": "A"}])
+        self.assertIn("/v1/games/morrowind/mods/5/files.json", c._api.call_args[0][0])
+        self.assertEqual(self.client([ApiError("nope", 404)]).mod_files("morrowind", 5), [])
+        self.assertEqual(self.client([["not", "a", "dict"]]).mod_files("morrowind", 5), [])
+
     def test_refuses_foreign_hosts(self):
         with self.assertRaises(PipelineError):
             NexusClient("key")._api("https://evil.example/x")

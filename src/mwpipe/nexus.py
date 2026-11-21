@@ -176,6 +176,15 @@ class NexusClient:
     def file_version(self, game: str, file_id: int) -> dict:
         return self._api(f"{API_V3}/games/{game}/mod-file-versions/{file_id}")["data"]
 
+    def mod_files(self, game: str, mod_id: int) -> list[dict]:
+        """The mod's files (v1: file_id, name, category_name, ...); [] if the API will not say."""
+        try:
+            data = self._api(f"{API_V1}/games/{game}/mods/{mod_id}/files.json")
+        except PipelineError:
+            return []
+        files = data.get("files") if isinstance(data, dict) else None
+        return [f for f in files if isinstance(f, dict)] if isinstance(files, list) else []
+
     # -- publishing (v3) -------------------------------------------------------------------------
     def upload_file(self, path: Path, filename: str) -> str:
         """Single-part upload session -> PUT to the presigned URL -> finalise. Returns the upload id."""
