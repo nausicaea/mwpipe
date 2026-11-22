@@ -1,0 +1,69 @@
+https://www.nexusmods.com/morrowind/mods/43931
+https://www.nexusmods.com/morrowind/mods/45096
+https://www.nexusmods.com/morrowind/mods/44523?tab=files&file_id=1000022012
+https://www.nexusmods.com/morrowind/mods/55354
+https://www.nexusmods.com/morrowind/mods/47588
+https://www.nexusmods.com/morrowind/mods/59927
+https://www.nexusmods.com/morrowind/mods/56417
+https://www.nexusmods.com/morrowind/mods/44922
+https://www.nexusmods.com/morrowind/mods/44921
+https://www.nexusmods.com/morrowind/mods/52237?tab=files&file_id=1000063603
+https://www.nexusmods.com/morrowind/mods/52237?tab=files&file_id=1000056095
+https://www.nexusmods.com/morrowind/mods/45384
+https://www.nexusmods.com/morrowind/mods/45399
+https://www.nexusmods.com/morrowind/mods/46221?tab=files&file_id=1000040614
+https://www.nexusmods.com/morrowind/mods/46221?tab=files&file_id=1000031179
+https://www.nexusmods.com/morrowind/mods/46221?tab=files&file_id=1000040598
+https://www.nexusmods.com/morrowind/mods/50087
+https://www.nexusmods.com/morrowind/mods/46289?tab=files&file_id=1000013026
+https://www.nexusmods.com/morrowind/mods/45886
+https://gitlab.com/modding-openmw/harvest-lights/-/package_files/382509233/download
+https://www.nexusmods.com/morrowind/mods/49278?tab=files&file_id=1000022863
+https://www.nexusmods.com/morrowind/mods/46232
+https://www.nexusmods.com/morrowind/mods/46069?tab=files&file_id=1000015383
+https://www.nexusmods.com/morrowind/mods/49616
+https://www.nexusmods.com/morrowind/mods/56836
+https://www.nexusmods.com/morrowind/mods/47254
+https://www.nexusmods.com/morrowind/mods/42145?tab=files&file_id=1000074409
+https://www.nexusmods.com/morrowind/mods/42145?tab=files&file_id=1000007008
+https://www.nexusmods.com/morrowind/mods/50093
+https://www.nexusmods.com/morrowind/mods/47617?tab=files&file_id=1000045698
+https://www.nexusmods.com/morrowind/mods/47617?tab=files&file_id=1000047273
+https://www.nexusmods.com/morrowind/mods/53935?tab=files&file_id=1000048021
+https://www.nexusmods.com/morrowind/mods/53935?tab=files&file_id=1000048020
+https://www.nexusmods.com/morrowind/mods/46599?tab=files&file_id=1000014601
+https://gitlab.com/modding-openmw/friendly-autosave/-/package_files/340546787/download
+https://www.nexusmods.com/morrowind/mods/53006
+https://www.nexusmods.com/morrowind/mods/50445
+https://www.nexusmods.com/morrowind/mods/55948
+https://gitlab.com/modding-openmw/distant-fixes-lua-edition/-/package_files/247672549/download
+https://www.nexusmods.com/morrowind/mods/50796
+https://www.nexusmods.com/morrowind/mods/54784
+https://www.nexusmods.com/morrowind/mods/59593
+https://www.nexusmods.com/morrowind/mods/49662?tab=files&file_id=1000025298
+https://www.nexusmods.com/morrowind/mods/54708?tab=files&file_id=1000050963
+https://www.nexusmods.com/morrowind/mods/50534
+https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388
+- Siege at Firemoth.esp
+- TR_Firemoth_remover.esp
+- k_weather (louder sounds).esp
+- Lake Fjalding Anti-Suck.ESP
+- chuzei_helm_no_neck.esp
++ https://www.nexusmods.com/morrowind/mods/44523?tab=files&file_id=1000022012 | Jammings off(v1.1)/Menu_replacer(optional)/Data Files
++ https://www.nexusmods.com/morrowind/mods/59927 | 00 Data Files
++ https://www.nexusmods.com/morrowind/mods/45384 | 00 Core
++ https://www.nexusmods.com/morrowind/mods/45384 | 02 Weapon Sheathing Patch
++ https://www.nexusmods.com/morrowind/mods/45384 | 05 Graphic Herbalism Patch
++ https://www.nexusmods.com/morrowind/mods/50087 | 00 Core
++ https://www.nexusmods.com/morrowind/mods/50087 | 02 Vanilla style
++ https://www.nexusmods.com/morrowind/mods/56836 | 00 Core
++ https://www.nexusmods.com/morrowind/mods/56836 | 01 Tamriel Rebuilt Playlists
++ https://www.nexusmods.com/morrowind/mods/56836 | 02 Project Cyrodiil Playlists
++ https://www.nexusmods.com/morrowind/mods/47254 | 00 core
++ https://www.nexusmods.com/morrowind/mods/42145?tab=files&file_id=1000074409 | 00 Core
++ https://www.nexusmods.com/morrowind/mods/42145?tab=files&file_id=1000074409 | 01 Faction Integration
++ https://www.nexusmods.com/morrowind/mods/46599?tab=files&file_id=1000014601 | 00 Core + Vanilla Meshes
++ https://www.nexusmods.com/morrowind/mods/50796 | 00 Core
++ https://www.nexusmods.com/morrowind/mods/50796 | 01 Patch for vanilla Solstheim location
++ https://www.nexusmods.com/morrowind/mods/49662?tab=files&file_id=1000025298 | 01 1X Flat
+! Distant_Seafloor_2.00.esm < Bloodmoon.esm
