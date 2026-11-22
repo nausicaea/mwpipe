@@ -49,13 +49,30 @@ https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388
 - k_weather (louder sounds).esp
 - Lake Fjalding Anti-Suck.ESP
 - chuzei_helm_no_neck.esp
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Merged or Individual > Version > UMOPP Individual
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Adamantium Armor
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Area Effect Arrows
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Bitter Coast Sounds
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Entertainers
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Helm of Tohan
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > LeFemm Armor
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Master Index
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Siege at Firemoth
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Better Armor Compatibility > Install Better Armor Compatibilty? > Yes
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | ReadMes > ReadMes > Readme
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | ReadMes > ReadMes > List of Patched Bugs
++ https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | ReadMes > ReadMes > Notes on Compatibility
 + https://www.nexusmods.com/morrowind/mods/44523?tab=files&file_id=1000022012 | Jammings off(v1.1)/Menu_replacer(optional)/Data Files
 + https://www.nexusmods.com/morrowind/mods/59927 | 00 Data Files
 + https://www.nexusmods.com/morrowind/mods/45384 | 00 Core
 + https://www.nexusmods.com/morrowind/mods/45384 | 02 Weapon Sheathing Patch
 + https://www.nexusmods.com/morrowind/mods/45384 | 05 Graphic Herbalism Patch
++ https://www.nexusmods.com/morrowind/mods/45399?tab=files&file_id=1000053268 | Options > Textures > Morrowind Enhanced Textures
++ https://www.nexusmods.com/morrowind/mods/45399?tab=files&file_id=1000053268 | Options > Patches > Glow in the Dahrk
++ https://www.nexusmods.com/morrowind/mods/45399?tab=files&file_id=1000053268 | Options > Patches > Graphic Herbalism
 + https://www.nexusmods.com/morrowind/mods/50087 | 00 Core
 + https://www.nexusmods.com/morrowind/mods/50087 | 02 Vanilla style
++ https://www.nexusmods.com/morrowind/mods/45886?tab=files&file_id=1000059262 | Mod Options > Game Engine > OpenMW
 + https://www.nexusmods.com/morrowind/mods/56836 | 00 Core
 + https://www.nexusmods.com/morrowind/mods/56836 | 01 Tamriel Rebuilt Playlists
 + https://www.nexusmods.com/morrowind/mods/56836 | 02 Project Cyrodiil Playlists
@@ -66,4 +83,7 @@ https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388
 + https://www.nexusmods.com/morrowind/mods/50796 | 00 Core
 + https://www.nexusmods.com/morrowind/mods/50796 | 01 Patch for vanilla Solstheim location
 + https://www.nexusmods.com/morrowind/mods/49662?tab=files&file_id=1000025298 | 01 1X Flat
++ https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388 | Options > Extras > Unused Bethesda Loading Screens
++ https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388 | Options > Extras > New Vanilla Creatures Loading Screens
++ https://www.nexusmods.com/morrowind/mods/55498?tab=files&file_id=1000061388 | Options > Extras > Main Menu Replacer
 ! Distant_Seafloor_2.00.esm < Bloodmoon.esm
