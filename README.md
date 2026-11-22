@@ -14,7 +14,7 @@ collection URL / nxm link
   -> delta        delta_plugin merge  -> Generated/delta-merged.omwaddon
   -> groundcover  GOCoverify          -> Generated/
   -> lightfix     Lumenaire           -> Generated/Lumenaire.omwaddon
-  -> textures     report textures that meshes use but nothing provides
+  -> textures     report textures that meshes use but nothing provides (opt-in: --check-textures)
 ```
 
 Every step can be re-run safely: archives are verified by MD5 and cached, mods are only

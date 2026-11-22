@@ -54,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--steps", type=_steps, default=None, help=f"comma list from: {','.join(ALL_STEPS)}")
     run.add_argument("--skip", type=_steps, default=[], help="steps to leave out")
     run.add_argument("--clean", action="store_true", help="also run tes3cmd clean on collection plugins")
+    run.add_argument("--check-textures", action="store_true",
+                     help="also report textures that meshes use but nothing provides (the textures step)")
     run.add_argument("--include-optional", action="store_true", help="install mods marked optional")
     run.add_argument("--allow-missing", action="store_true", help="continue when some archives are missing")
     run.add_argument("--lowercase-dds", action="store_true", help="rename *.DDS textures to lower case")
@@ -130,7 +132,8 @@ def main(argv: list[str] | None = None) -> int:
             log.info("%s", json.dumps(result, indent=2))
             return 0
 
-        steps = args.steps or DEFAULT_STEPS + (["clean"] if args.clean else [])
+        steps = args.steps or (
+            DEFAULT_STEPS + (["clean"] if args.clean else []) + (["textures"] if args.check_textures else []))
         steps = [s for s in steps if s not in args.skip]
         ref = parse_collection_ref(args.collection) if args.collection else None
         if ref is None and "fetch" in steps:
