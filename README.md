@@ -5,21 +5,21 @@ The host needs Docker and nothing else.
 
 ```
 collection URL / nxm link
-  -> fetch        collection.json from Nexus (GraphQL v2, see "Nexus APIs"); downloaded again on every run
+  -> fetch        collection.json from Nexus (GraphQL v2), on every run
   -> download     mod archives through the Nexus API v3 (requires Premium)
-  -> install      extract to ModData/<collection-name-slug>/, FOMOD choices and "replicate" mode honoured
+  -> install      extract to ModData/<collection-name-slug>/, FOMOD choices honoured
   -> configure    openmw.cfg: data=, fallback-archive=, content=, groundcover=, fallback=
   -> clean        tes3cmd clean (opt-in: --clean)
-  -> sort         keep the collection's load order (plox only when needed, see below)
+  -> sort         keep the collection's load order (plox only when needed)
   -> delta        delta_plugin merge  -> Generated/delta-merged.omwaddon
-  -> groundcover  GOCoverify          -> Generated/deleted_groundcover.omwaddon, groundcover.omwaddon, meshes/
+  -> groundcover  GOCoverify          -> Generated/
   -> lightfix     Lumenaire           -> Generated/Lumenaire.omwaddon
-  -> textures     report textures that meshes use but no mod or BSA provides, and which mod uses them
+  -> textures     report textures that meshes use but nothing provides
 ```
 
 Every step can be re-run safely: archives are verified by MD5 and cached, mods are only
 re-extracted when their archive or install choices change, and generated plugins are removed
-from openmw.cfg before the tools run again, so the tools never merge their own output.
+from openmw.cfg before the tools run again.
 
 ## Setup
 
@@ -28,181 +28,145 @@ cp .env.example .env              # set OPENMW_DATA_DIR and OPENMW_CONFIG_DIR
 mkdir -p secrets && (umask 077; printf %s 'YOUR_NEXUS_API_KEY' > secrets/nexus_api_key)
 ```
 
-The base game must already be in `$OPENMW_DATA_DIR/Morrowind/Data Files` (or set
+The base game must be in `$OPENMW_DATA_DIR/Morrowind/Data Files` (or set
 `MORROWIND_DATA_FILES`), with `Morrowind.ini` next to that folder.
 
 ## Usage
 
 ```sh
 ./mwpipe.sh run https://www.nexusmods.com/games/morrowind/collections/8euesh
-./mwpipe.sh run nxm://morrowind/collections/8euesh/revisions/1
 ./mwpipe.sh run                       # re-run with the last fetched collection
 ./mwpipe.sh run --steps configure,sort,delta
-./mwpipe.sh postprocess               # sort, delta, groundcover, lightfix only (the old entrypoint)
+./mwpipe.sh postprocess               # sort, delta, groundcover, lightfix only
 ./mwpipe.sh --dry-run run             # show the openmw.cfg that would be written
 ```
 
-`mwpipe.sh` is `docker compose run --rm --build mwpipe` with your UID/GID; you can call
-compose directly. To skip the local build, set `MWPIPE_IMAGE=ghcr.io/<owner>/mwpipe:latest`
-in `.env`: the script then pulls that image instead. Run `./mwpipe.sh --help` and `./mwpipe.sh run --help` for every option.
+`mwpipe.sh` wraps `docker compose run --rm --build mwpipe` with your UID/GID. Set
+`MWPIPE_IMAGE=ghcr.io/<owner>/mwpipe:latest` in `.env` to pull a prebuilt image instead.
+See `./mwpipe.sh --help` and `./mwpipe.sh run --help` for all options.
 
-A Nexus Premium account is required: the API only issues download links to Premium accounts.
-Mods hosted outside Nexus are listed at the end of the download step; put those files into
-the downloads cache (see Layout; any file name works, they are matched by MD5) and run again.
-In Docker the cache is a volume, so either set `DOWNLOADS_DIR` in `.env` to a host directory (below
-`$OPENMW_DATA_DIR`) or copy the file in with `docker run`/`docker cp`.
+Nexus Premium is required. Mods hosted outside Nexus are listed at the end of the download
+step; put those files in the downloads cache (any file name, matched by MD5) and run again.
+In Docker, set `DOWNLOADS_DIR` in `.env` to a host directory below `$OPENMW_DATA_DIR`, or copy
+files into the volume with `docker cp`.
 
 ### Building a collection from a mod list
 
-The reverse direction: turn a list of mod URLs into a collection on your own Nexus account.
+Turns a list of mod URLs into a draft collection on your Nexus account.
 
 ```sh
 ./mwpipe.sh build-collection - --name "My Morrowind list" < modlist.txt
 ./mwpipe.sh build-collection "$OPENMW_DATA_DIR/modlist.txt" --no-upload \
-    --output-dir "$OPENMW_DATA_DIR/collection-out"                          # build and inspect only
-./mwpipe.sh build-collection modlist.txt --collection-id 12345             # new revision of a collection
+    --output-dir "$OPENMW_DATA_DIR/collection-out"                 # build and inspect only
+./mwpipe.sh build-collection modlist.txt --collection-id 12345    # new revision
 ```
 
-`modlist.txt` has one URL per line, `#` starts a comment. Nexus mod pages (`/morrowind/mods/43931`,
-optionally `?file_id=N` to pin a file) and `nxm://.../mods/ID/files/ID` links resolve through the
-v3 API to the mod's primary file. A mod with several wanted files (say separate textures and meshes) needs one
-`?file_id=N` line per file, in the order they should load; when a line has no `file_id` and the mod has other current files,
-the log lists them with their ids. Any other `https://` URL becomes a "direct" download, which
-the collection installer fetches from that URL.
-A line `+ <mod url> | <what>` configures one mod of the list, named by its URL (the file id is optional
-unless the list holds several files of that mod; a URL without one names the mod's primary file, and
-the listing below prints each mod with its file id). These lines can go anywhere, for instance all at the
-end. `<what>` is either an archive folder, for archives that ship alternative data folders (`+ <url> | 00 Core`,
-one line per folder, relative to the archive root, case-insensitive; without any, all candidate folders are
-installed), or `Step > Group > Option`, an option of the mod's FOMOD installer (`+ <url> | Main > Textures > 2K`;
-the names must match `fomod/ModuleConfig.xml`, and a name that matches nothing is logged as a warning).
-Folder picks are stored as an `mwpipe` key of the mod in the bundle's `collection.json`, so `mwpipe run`
-repeats them; `mods.<key>.data` in `config/overrides.json` still takes precedence there. FOMOD picks are
-stored as the mod's `choices`, in the format Vortex writes. A mod with folder picks does not run its FOMOD installer.
-`build-collection` logs what each archive offers, so you can add `+` lines step by step: the options of
-every FOMOD installer (as `Step > Group > Option`, `[x]` for what is installed now) and the data folders
-of archives with several of them, each with the `+ <mod url> | ...` line to use. The listing is repeated
-on later runs, also for mods that are not installed again. FOMOD steps that are hidden by an earlier
-choice only show up once that choice has been made, so run again after adding lines.
-A line starting with `-` names a plugin to leave out of the load order, for mods that ship either/or
-plugins. plox prints a `[CONFLICT] use only one of these plugins` for them; add `- k_weather (louder
-sounds).esp` to the list, run again, and the conflict is gone from the sort and from the collection
-(the plugin is stored as disabled, which `mwpipe run` honors). A line `! first.esm < second.esm` is a
-plox order rule (the first plugin loads before the second); the sorted result, base masters included, is
-what the collection stores as its `loadOrder`. The mod list file must be somewhere the container
-can see (below `$OPENMW_DATA_DIR`), or be piped in on stdin as above.
+`modlist.txt`: one URL per line, `#` starts a comment. The file must be below `$OPENMW_DATA_DIR`
+or piped on stdin.
 
-What happens: every archive is downloaded (cached by MD5), installed into a scratch setup that never
-touches your `openmw.cfg`, and sorted with plox. The collection keeps your list order for the data
-directories (later entries override earlier ones) and the plox result as its load order. The bundle
-(`collection.json` with `loadOrder`, packed as `.7z`) is uploaded and a collection is created from it
-as a **draft** revision; publish it on the website. Files for inspection land in
-`--output-dir` (default: `builds/<name>/out/` in the state volume, which the host cannot browse, so pass
-`--output-dir` below `$OPENMW_DATA_DIR` to look at them): `collection.json`, `collection-data.json` (the API
-request body), the bundle and `load-order.txt`.
+| Line | Meaning |
+| --- | --- |
+| Nexus mod page or `nxm://` link | Resolves to the mod's primary file. Add `?file_id=N` to pin a file; a mod with several wanted files needs one such line per file, in load order. |
+| other `https://` URL | Direct download (version `unknown`). |
+| `+ <mod url> \| 00 Core` | Install only this archive folder (one line per folder, case-insensitive). Without any, all candidate folders are installed. |
+| `+ <mod url> \| Step > Group > Option` | Pick an option of the mod's FOMOD installer (names must match `fomod/ModuleConfig.xml`). Stored as the mod's `choices`. |
+| `- plugin.esp` | Leave the plugin out of the load order (for either/or plugins; plox reports these as `[CONFLICT]`). |
+| `! first.esm < second.esm` | plox order rule: first loads before second. |
 
-Limits: Premium is needed (the mods are downloaded), the bundle must be under 100 MiB, FOMOD
-installers run with their default choices unless the list picks options with `+` lines, and mods with no plugins at all are included as they are.
-An archive with several alternative data folders ("adding all" warnings in the log) is installed with all
-of them, later ones overriding earlier ones, unless the list picks folders with `+` lines. Nexus has no
-field for folder picks: neither the v3 manifest nor Vortex's `collection.json` can select a plain folder
-(Vortex records only FOMOD choices), so they reach `mwpipe run` but are not applied by Vortex.
-`--collection-id N` adds a revision to an existing collection and reuses its name; if the API will not
-report the name, pass `--name` once and mwpipe remembers it (`collections.json` in the state directory).
+`+` and `-` lines can go anywhere. `build-collection` logs what each FOMOD and multi-folder
+archive offers, with the `+` line to use; FOMOD steps hidden by an earlier choice appear
+only after that choice is made, so run again.
 
-Direct downloads get the version `unknown`, since a bare URL carries none.
+Every archive is downloaded, installed into a scratch setup (never your `openmw.cfg`) and sorted
+with plox. The collection keeps your list order for data directories and the plox result as its
+load order. The bundle (`collection.json` plus `loadOrder`, as `.7z`) is uploaded as a **draft**
+revision; publish it on the website. Inspection files (`collection.json`, `collection-data.json`,
+the bundle, `load-order.txt`) go to `--output-dir`; the default is inside the state volume, which
+the host cannot browse, so pass a directory below `$OPENMW_DATA_DIR`.
 
-Archives are looked up by mod and file id in `archives.json` in the cache, independent of the collection
-name. If that index is lost, files already in `downloads/` are adopted by name and size. A fresh download
-that is byte-identical to an existing file is merged into it. To clean up duplicates left by earlier
-versions, run `mwpipe dedupe-downloads` (add `--dry-run` to preview); the shortest name of each group stays.
+Limits: Premium is needed; the bundle must be under 100 MiB; FOMOD installers use defaults unless
+picked with `+` lines. Folder picks are stored as an `mwpipe` key in `collection.json`, so
+`mwpipe run` repeats them (`mods.<key>.data` in `overrides.json` takes precedence), but Vortex
+ignores them. `--collection-id N` reuses the collection's name; if the API will not report it,
+pass `--name` once and mwpipe remembers it.
+
+Archives are indexed by mod and file id in `archives.json` in the cache. If the index is lost,
+files in `downloads/` are adopted by name and size. `mwpipe dedupe-downloads [--dry-run]` removes
+byte-identical duplicates, keeping the shortest name.
 
 ### Nexus APIs
 
-| Call | API | Why |
-| --- | --- | --- |
-| collection revision and its archive link | GraphQL v2 | v3 has no endpoint that reads collections, only create and edit |
-| mod file download links | REST v3 `mod-file-versions/{id}/download-link` | documented, but badged Experimental |
-| mod name, version and primary file | REST v3 `mods/{id}`, `mod-file-versions/{id}` | used by `build-collection` |
-| upload and create a collection | REST v3 `uploads`, `collections` | used by `build-collection` |
-| Premium check, and download fallback | REST v1 | v1 is used when the v3 link call returns 404, 410 or 5xx |
+| Call | API |
+| --- | --- |
+| collection revision and archive link | GraphQL v2 (v3 cannot read collections) |
+| download links | REST v3 `mod-file-versions/{id}/download-link` (Experimental) |
+| mod name, version, primary file | REST v3 `mods/{id}`, `mod-file-versions/{id}` |
+| upload and create a collection | REST v3 `uploads`, `collections` |
+| Premium check, download fallback | REST v1 (fallback on v3 404, 410 or 5xx) |
 
-Downloads are verified by MD5 only. Collection manifests are accepted with either camelCase keys
-(`modId`, `fileId`) or the snake_case keys of the v3 upload spec (`mod_id`, `file_id`).
+Downloads are verified by MD5 only. Manifests accept camelCase (`modId`) or snake_case (`mod_id`) keys.
 
 ### Load order
 
-The collection's load order is what its author tested, so it is used as is (`--sort auto`).
-plox only runs when the collection has no load order or `extra_content` adds plugins with no
-position of their own. `--sort plox` always sorts with the mlox rules; `--sort collection` never does.
-Generated plugins are always appended last.
+The collection's load order is used as is (`--sort auto`). plox runs only when the collection has
+no load order or `extra_content` adds plugins with no position. `--sort plox` always sorts with the
+mlox rules; `--sort collection` never does. Generated plugins are always last.
 
-To place a plugin yourself, add mlox rules (plox's `[Order]`, `[NearStart]`, `[NearEnd]` blocks, earlier
-plugin loads first) as strings under `plox_rules` in `config/overrides.json`. mwpipe writes them to plox's
-`mlox_my_rules.txt` next to the downloaded rules; they apply with `--sort plox` (and always in
-`build-collection`), while `--sort auto` keeps the collection's order and warns that they are ignored. The
-base masters (Morrowind, Tribunal, Bloodmoon) stay first unless the collection's order puts another plugin
-ahead of one, as in the example above.
+To place a plugin yourself, add mlox rules (`[Order]`, `[NearStart]`, `[NearEnd]`) as strings under
+`plox_rules` in `config/overrides.json`. They apply with `--sort plox` and always in
+`build-collection`; `--sort auto` ignores them and warns. The base masters stay first unless the
+collection's order says otherwise.
 
 ## Input and secrets
 
 | What | How (first match wins) |
 | --- | --- |
-| Nexus API key | `--api-key-file`, `NEXUS_API_KEY_FILE`, Docker secret `/run/secrets/nexus_api_key`, `NEXUS_API_KEY`, `--api-key-stdin`, interactive prompt |
+| Nexus API key | `--api-key-file`, `NEXUS_API_KEY_FILE`, Docker secret `/run/secrets/nexus_api_key`, `NEXUS_API_KEY`, `--api-key-stdin`, prompt |
 | Collection | positional argument, `MWPIPE_COLLECTION`, last fetched collection |
-| Paths | flags (`--data-dir`, `--openmw-cfg`, ...) over env vars (`OPENMW_DATA_DIR`, `OPENMW_CONFIG_DIR`, `OPENMW_CONFIG`, `MORROWIND_DATA_FILES`, `MODS_DIR`, `GENERATED_DIR`, `MWPIPE_CACHE_DIR`, `MWPIPE_STATE_DIR`, `MWPIPE_CONFIG_DIR`, `DOWNLOADS_DIR`) |
+| Paths | flags (`--data-dir`, `--openmw-cfg`, ...) over env vars (`OPENMW_DATA_DIR`, `OPENMW_CONFIG_DIR`, `OPENMW_CONFIG`, `MORROWIND_DATA_FILES`, `MODS_DIR`, `GENERATED_DIR`, `DOWNLOADS_DIR`, `MWPIPE_CACHE_DIR`, `MWPIPE_STATE_DIR`, `MWPIPE_CONFIG_DIR`) |
 
-There is deliberately no flag that takes the key itself, since command lines end up in shell
-history and process lists. The key is only sent to `api.nexusmods.com`, never to download mirrors.
-The container runs as your user with a read-only root filesystem, no capabilities and only the
-mounted folders (OpenMW's two, plus the cache and state volumes) writable, and the config files read-only. Archive contents are treated as untrusted: symlinks are removed
-and entries that escape the extraction folder abort the install.
+No flag takes the key itself, to keep it out of shell history. The key is only sent to
+`api.nexusmods.com`. The container runs as your user with a read-only root filesystem, no
+capabilities and only the mounted folders writable. Archive contents are untrusted: symlinks are
+removed and entries escaping the extraction folder abort the install.
 
-Paths are mounted at the same location inside the container as on the host, so the paths written
-into `openmw.cfg` work for both OpenMW and the tools. That replaces the old hardcoded
-`/Users/kitsune/...` symlink.
+Paths are mounted at the same location inside the container as on the host, so the paths in
+`openmw.cfg` work for both OpenMW and the tools.
 
 ## Layout
-
-OpenMW's files and mwpipe's own files are kept apart. OpenMW's, because `openmw.cfg` points at them:
 
 ```
 $OPENMW_DATA_DIR/
   Morrowind/Data Files/        base game (yours)
-  ModData/<collection-name-slug>/NNN Name/     one folder per mod (several if the archive has several roots)
+  ModData/<collection-name-slug>/NNN Name/     one folder per mod
   Generated/                   delta merge, groundcover, light fixes (last data= entry)
 ```
 
-mwpipe's own files, in Docker:
-
 | | Where | Holds |
 | --- | --- | --- |
-| cache | named volume `mwpipe_cache`, `/cache` | `downloads/` (archive cache), `archives.json` (which mod is which file), `md5-cache.json`, `plox/` (mlox rules), `scratch/`. Safe to delete. |
-| state | named volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `missing-textures.txt` (from the `textures` step), `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
-| config | `./config/overrides.json` and `./config/lumenaire.toml`, mounted read-only on `/config` by compose's `configs:` | Yours to edit; mwpipe never writes them. Without a `lumenaire.toml` the packaged defaults are used. |
+| cache | volume `mwpipe_cache`, `/cache` | `downloads/`, `archives.json`, `md5-cache.json`, `plox/`, `scratch/`. Safe to delete. |
+| state | volume `mwpipe_state`, `/state` | `current.json`, `collections/`, `manifest.json`, `missing-textures.txt`, `backups/` (openmw.cfg), `builds/`. Deleting it means reinstalling. |
+| config | `./config/overrides.json`, `./config/lumenaire.toml`, mounted read-only on `/config` | Yours to edit; mwpipe never writes them. Without `lumenaire.toml` the packaged defaults apply. |
 
-The volumes survive `run --rm`; `docker compose down -v` deletes them, `docker volume ls` shows them.
-`DOWNLOADS_DIR` in `.env` moves just the archives to a host directory.
+Volumes survive `run --rm`; `docker compose down -v` deletes them.
 
-Outside Docker (`pip install .`) the same three directories are per-user: XDG directories on Linux
-(`~/.cache/mwpipe`, `~/.local/state/mwpipe`, `~/.config/mwpipe`), and `~/Library/Caches/mwpipe` and
-`~/Library/Application Support/mwpipe` on macOS. Override with `--cache-dir`, `--state-dir`, `--config-dir`
-or `MWPIPE_CACHE_DIR`, `MWPIPE_STATE_DIR`, `MWPIPE_CONFIG_DIR`.
+Outside Docker (`pip install .`) the directories are per-user: `~/.cache/mwpipe`,
+`~/.local/state/mwpipe`, `~/.config/mwpipe` on Linux; `~/Library/Caches/mwpipe` and
+`~/Library/Application Support/mwpipe` on macOS. Override with `--cache-dir`, `--state-dir`,
+`--config-dir` or the `MWPIPE_*_DIR` variables.
 
-Upgrading from the first layout (`Downloads/`, `.mwpipe/` and `mwpipe-overrides.json` in the data
-directory): set `DOWNLOADS_DIR` in `.env` to the old `Downloads` folder, copy the overrides file to
-`config/overrides.json` and your `lumenaire.toml`, if you edited it, to `config/`, then delete `.mwpipe/`.
-The installed mods are re-extracted once.
+Upgrading from the first layout (`Downloads/`, `.mwpipe/`, `mwpipe-overrides.json` in the data
+directory): set `DOWNLOADS_DIR` to the old `Downloads` folder, copy the overrides file (and an
+edited `lumenaire.toml`) to `config/`, then delete `.mwpipe/`. Mods are re-extracted once.
 
-`openmw.cfg` keeps all lines mwpipe does not manage (`encoding`, `fallback=`, comments, ...).
-`data=`, `fallback-archive=`, `content=` and `groundcover=` are rewritten as one block at the end.
-A timestamped backup goes to `backups/` in the state volume before every write. If the file has no
-`fallback=` lines, they are imported from `Morrowind.ini` the same way `openmw-iniimporter` does.
+`openmw.cfg` keeps all lines mwpipe does not manage. `data=`, `fallback-archive=`, `content=` and
+`groundcover=` are rewritten as one block at the end, after a timestamped backup. If there are no
+`fallback=` lines, they are imported from `Morrowind.ini` like `openmw-iniimporter` does.
 
 ## Overrides
 
 `config/overrides.json` covers what a collection can't express. Mods are keyed by
-`<modId>-<fileId>` or by their name in the collection.
+`<modId>-<fileId>` or by collection name.
 
 ```json
 {
@@ -211,7 +175,7 @@ A timestamped backup goes to `backups/` in the state volume before every write. 
     "Some Mod":    { "skip": true },
     "Optional Mod": { "include": true }
   },
-  "fallback":      { "Fonts_Font_0": "pelagiad", "Fonts_Font_2": "OMWAyembedt" },
+  "fallback":      { "Fonts_Font_0": "pelagiad" },
   "groundcover":   ["Vurts Groundcover - Reeds.esp"],
   "disable":       ["Unwanted.esp"],
   "plox_rules":    ["[Order]\nDistant_Seafloor_2.00.esm\nBloodmoon.esm"],
@@ -222,51 +186,37 @@ A timestamped backup goes to `backups/` in the state volume before every write. 
 
 ## Tool configuration
 
-| Variable | Effect |
+| Setting | Effect |
 | --- | --- |
 | `GOCOVERIFY_ARGS`, `LUMENAIRE_ARGS` | extra flags, e.g. `LUMENAIRE_ARGS="--negative-lights preserve"` |
-| `--enlightened-flames` | Lumenaire candle conversion (needs the Enlightened Flames textures) |
-| `RAYON_NUM_THREADS=1` | lower delta_plugin's memory use on large load orders |
-| `--delta-skip` | record types delta_plugin skips (default `Cell,Dialogue,DialogueInfo`, as MOMW recommends) |
-| build args `DELTA_PLUGIN_VERSION`, `PLOX_VERSION`, `GOCOVERIFY_VERSION`, `LUMENAIRE_VERSION`, `TES3CMD_COMMIT` | tool versions, maintained by Renovate |
-| build args `GOCOVERIFY_SHA256`, `LUMENAIRE_SHA256` | pin the Go tools to an exact build (default: verify against the published checksum) |
+| `--enlightened-flames` | Lumenaire candle conversion (needs Enlightened Flames textures) |
+| `RAYON_NUM_THREADS=1` | lower delta_plugin memory use |
+| `--delta-skip` | record types delta_plugin skips (default `Cell,Dialogue,DialogueInfo`) |
+| build args `*_VERSION`, `TES3CMD_COMMIT` | tool versions, maintained by Renovate |
+| build args `GOCOVERIFY_SHA256`, `LUMENAIRE_SHA256` | pin Go tools to an exact build |
 
-Light settings come from `config/lumenaire.toml`, which starts as a copy of the
-bundled defaults (your former waza values: flicker off, radius 1.2 / 1.1).
+Light settings live in `config/lumenaire.toml`.
 
 ## Development
 
-mwpipe is a regular Python package (`pyproject.toml`, `src/mwpipe/`, no runtime dependencies,
-Python 3.11 or newer). The image installs it with `pip install`; outside Docker you can do the same
-for development:
+Python 3.11+ package, no runtime dependencies:
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e .
-python3 -m unittest discover -s tests       # offline, needs neither Docker nor network
+python3 -m unittest discover -s tests       # offline
 ```
 
 Code map (`src/mwpipe/`): `cli.py` arguments, `settings.py` paths and secrets, `nexus.py` API,
-`modlist.py` and `publish.py` mod list to collection, `archives.py` extraction, `install.py` data folder detection, `fomod.py` FOMOD installer,
-`collection.py` collection.json and mod ordering, `openmw_cfg.py` config file, `tools.py`
-external tools, `pipeline.py` the steps.
+`modlist.py`/`publish.py` mod list to collection, `archives.py` extraction, `install.py` data
+folder detection, `fomod.py` FOMOD, `collection.py` collection.json and ordering,
+`openmw_cfg.py` config file, `tools.py` external tools, `pipeline.py` steps.
 
 ## Dependency updates and releases
 
-All external versions live in annotated `ARG` lines in the `Dockerfile`:
+External versions live in annotated `ARG` lines in the `Dockerfile`, updated by Renovate
+(`renovate.json5`, `config:best-practices`; `tes3cmd` is pinned to a `master` commit). Alpine
+packages are deliberately unpinned; the base image digest moves them.
 
-```dockerfile
-# renovate: datasource=github-tags depName=rfuzzo/plox
-ARG PLOX_VERSION=v0.5.0
-```
-
-`renovate.json5` extends `config:best-practices` (digest pinning for base images, SHA pinning for
-GitHub Actions) and adds two custom managers: one for the annotated version `ARG`s, one for
-`tes3cmd`, which has no releases and is pinned to a commit on `master`. The Python base image
-and `.python-version` are grouped into one PR. Alpine packages are not pinned on purpose: Alpine
-removes old package versions, so pins break builds; the base image digest moves them instead.
-Image digests (`@sha256:...`) are added by Renovate's first pin PR.
-
-`.github/workflows/docker.yml` runs the tests, builds natively for linux/amd64 and linux/arm64,
-and on pushes to `main` and `vX.Y.Z` tags publishes a multi-arch image to
-`ghcr.io/<owner>/<repo>` with a build provenance attestation. Pull requests only build.
-The arm64 job uses GitHub's `ubuntu-24.04-arm` runner, which is free for public repositories only.
+`.github/workflows/docker.yml` runs the tests, builds for linux/amd64 and linux/arm64, and on
+pushes to `main` and `vX.Y.Z` tags publishes a multi-arch image to `ghcr.io/<owner>/<repo>` with
+provenance attestation. Pull requests only build.
