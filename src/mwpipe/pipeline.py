@@ -10,7 +10,7 @@
   delta       delta_plugin merge  -> Generated/delta-merged.omwaddon
   groundcover GOCoverify          -> Generated/deleted_groundcover.omwaddon, groundcover.omwaddon, meshes/
   lightfix    Lumenaire           -> Generated/Lumenaire.omwaddon
-  textures    report textures that meshes use but no data folder or BSA provides (read-only)
+  textures    report textures that meshes use but no data folder or BSA provides (read-only) (opt-in: --check-textures)
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from mwpipe.util import PipelineError, load_json, log, md5sum, save_json
 
 ALL_STEPS = ["fetch", "download", "install", "configure", "clean",
              "sort", "delta", "groundcover", "lightfix", "textures"]
-DEFAULT_STEPS = [s for s in ALL_STEPS if s != "clean"]
+DEFAULT_STEPS = [s for s in ALL_STEPS if s not in ("clean", "textures")]
 POSTPROCESS_STEPS = ["sort", "delta", "groundcover", "lightfix"]
 BASE_MASTERS = ["Morrowind.esm", "Tribunal.esm", "Bloodmoon.esm"]
 BASE_ARCHIVES = ["Morrowind.bsa", "Tribunal.bsa", "Bloodmoon.bsa"]
