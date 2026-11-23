@@ -60,11 +60,18 @@ https://www.nexusmods.com/morrowind/mods/59054
 https://www.nexusmods.com/morrowind/mods/58576
 https://www.nexusmods.com/morrowind/mods/58850
 https://www.nexusmods.com/morrowind/mods/56176?tab=files&file_id=1000073863
+https://gitlab.com/gbtb/mwse2omw/-/package_files/341725189/download
+https://gitlab.com/gbtb/smooth-talker-openmw/-/package_files/329263013/download
+https://www.nexusmods.com/morrowind/mods/51427?tab=files&file_id=1000033947
+https://www.nexusmods.com/morrowind/mods/56832?tab=description
 - Siege at Firemoth.esp
 - TR_Firemoth_remover.esp
 - k_weather (louder sounds).esp
 - Lake Fjalding Anti-Suck.ESP
 - chuzei_helm_no_neck.esp
+- PR Real Disposition Light.esp
+- PR Real Disposition Hard.esp
+- PR Real Disposition Renegade.esp
 + https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Merged or Individual > Version > UMOPP Individual
 + https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Adamantium Armor
 + https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1000064308 | Individual Versions > Individual Plugins > Area Effect Arrows
