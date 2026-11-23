@@ -210,6 +210,24 @@ mwpipe keeps all lines that it does not manage. It manages `data=`, `fallback-ar
 writes the file, it makes a backup with a timestamp. If there are no `fallback=` lines, mwpipe
 imports them from `Morrowind.ini`. This is the same as `openmw-iniimporter`.
 
+## Troubleshooting
+
+| Message or symptom | Cause | Action |
+| --- | --- | --- |
+| `Create .env first` | `mwpipe.sh` cannot find `.env`. | Run `cp .env.example .env` and set the two directories. |
+| `No Nexus API key` | No key source has a key. | Put the key in `secrets/nexus_api_key`. Alternatively, use `--api-key-stdin`, or run with a terminal so that mwpipe can ask for the key. |
+| `Nexus rejected the API key (401)` | The key is wrong or expired. | Make a new key on the Nexus website. Replace the old key. |
+| `Nexus refused the request (403)` | The account is not Premium, or the file is quarantined. | Check the Premium status of the account. Check the mod page for the file. |
+| `The Nexus rate limit is exceeded` | There are too many requests. | Wait. Then run the command again. The cache keeps the finished downloads. |
+| `MD5 mismatch` | The download is corrupted, or the file changed upstream. | Run the command again. If the error stays, delete the file from the downloads cache. |
+| `These mods are not hosted on Nexus` | The collection has mods from other sites. | Download the files by hand. Put them in the downloads cache. Run the command again. |
+| `Archive entry leaves the extraction directory` | An archive tries to write outside its folder. | Do not use this archive. mwpipe stopped the install on purpose. |
+| `The FOMOD installer produced no files` | The recorded choices select no files. | Examine the choices. For `build-collection`, add `+` lines. |
+| `plox_rules ignored` | `--sort auto` keeps the load order of the collection. | Use `--sort plox` to apply the rules. |
+| `delta_plugin` runs out of memory | The merge needs much memory. | Set `RAYON_NUM_THREADS=1`. |
+
+To see more detail, add `-v` before the command, for example `./mwpipe.sh -v run`.
+
 ## Overrides
 
 Use `config/overrides.json` for settings that a collection cannot express. The key of a mod is
