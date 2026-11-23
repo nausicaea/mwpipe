@@ -175,9 +175,11 @@ change the limit, use `--extract-limit GIB` or set `MWPIPE_EXTRACT_LIMIT` in `.e
 an install needs this space twice: in the cache volume and in `ModData`.
 
 The Dockerfile pins each tool: delta_plugin and plox by git commit, and GOCoverify and Lumenaire
-by the SHA-256 of each zip. When Renovate changes the version of GOCoverify or Lumenaire, the build
-fails until you set the new values. To get them, run
-`docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION`.
+by the SHA-256 of each zip. Renovate updates the tags and the commits. When Renovate changes the
+version of GOCoverify or Lumenaire, the `renovate-hashes` workflow adds a commit with the new SHA-256
+values to the Renovate branch and starts the Docker build. The workflow changes only the values of a
+tool whose version changed. If the zip of an unchanged version changes, the build stops. To get the
+values by hand, run `docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION`.
 
 mwpipe follows a redirect only to HTTPS. It does not send the key again after a redirect to a
 different host. mwpipe does not write a file name with a line break into `openmw.cfg`.

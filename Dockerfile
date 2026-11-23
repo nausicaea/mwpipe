@@ -26,9 +26,9 @@ ARG TARGETARCH
 ARG GOCOVERIFY_VERSION=1.1
 # renovate: datasource=gitlab-tags depName=modding-openmw/lumenaire versioning=regex:^(?<major>\d+)\.(?<minor>\d+)(?:-(?<prerelease>test))?$
 ARG LUMENAIRE_VERSION=1.0-test
-# SHA-256 of each zip, for each architecture. Renovate cannot calculate these: when it changes a version
-# above, the build fails until you set the new values. Get them with:
-#   docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION
+# SHA-256 of each zip, for each architecture. Renovate cannot calculate these. When it changes a version
+# above, .github/workflows/renovate-hashes.yml sets the new values (docker/update-tool-hashes.sh).
+# By hand: docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION
 ARG GOCOVERIFY_SHA256_AMD64=5878ac3116d369b248cc46c0f7a8467e6d28db61088829d7f019bedc4def9abf
 ARG GOCOVERIFY_SHA256_ARM64=9237c7925b6e43eadbf8d441b9b2b93a8178e5ba5db71e0ea8f30912ddbcd21f
 ARG LUMENAIRE_SHA256_AMD64=6ff39fe0cd58af6894dd645a80cb55b72f2587c42108932fcb8b39b66462df0c

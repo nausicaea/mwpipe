@@ -8,6 +8,9 @@
   labels: ["dependencies"],
   dependencyDashboard: {enabled: true},
   prConcurrentLimit: 5,
+  // .github/workflows/renovate-hashes.yml pushes the SHA-256 values of the Go tools to Renovate branches.
+  // Without this, Renovate stops updating a branch that has a commit from somebody else.
+  gitIgnoredAuthors: ["41898282+github-actions[bot]@users.noreply.github.com"],
 
   customManagers: [
     {
@@ -45,11 +48,11 @@
       groupName: "python",
     },
     {
-      // These tools come from GitLab CI artifacts; a new tag can lack one, and the pinned SHA-256 values must change.
+      // These tools come from GitLab CI artifacts; a new tag can lack one, and the pinned SHA-256 values change.
       matchDatasources: ["gitlab-tags"],
       matchPackageNames: ["modding-openmw/gocoverify", "modding-openmw/lumenaire"],
       prBodyNotes: [
-        "GOCoverify and Lumenaire are downloaded from the GitLab CI artifacts of this tag. Their SHA-256 values are pinned in the Dockerfile, so the Docker build fails until you update them: run `docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION`, check the values, and push them to this branch.",
+        "GOCoverify and Lumenaire are downloaded from the GitLab CI artifacts of this tag. The renovate-hashes workflow adds a commit with their new SHA-256 values and starts the Docker build. Merge only if that commit is present and the Docker build job is green.",
       ],
     },
   ],
