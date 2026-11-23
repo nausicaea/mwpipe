@@ -1,0 +1,51 @@
+name: renovate-hashes
+
+# Renovate updates the versions of GOCoverify and Lumenaire, but it cannot calculate the SHA-256 of their
+# zips. This workflow does that on the Renovate branch and pushes the new values as a commit. Renovate
+# ignores this commit (gitIgnoredAuthors in renovate.json5) and continues to update the branch.
+on:
+  pull_request:
+    paths: [Dockerfile]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    # Renovate branches in this repository only. A fork PR gets a read-only token.
+    if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push the commit with the new values
+      actions: write  # start the docker workflow: a push with GITHUB_TOKEN starts no workflow
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0 # the base commit is necessary to find the versions that changed
+      - name: Update the SHA-256 values
+        id: update
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          sh docker/update-tool-hashes.sh "$BASE"
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Push the values and start the Docker build
+        if: steps.update.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ github.head_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(deps): update the pinned SHA-256 values of the Go tools"
+          git push origin "HEAD:$BRANCH"
+          gh workflow run docker.yml --ref "$BRANCH"

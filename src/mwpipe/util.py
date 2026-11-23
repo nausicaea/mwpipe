@@ -35,6 +35,21 @@ def norm_rel(path: str) -> str:
     return path.replace("\\", "/").strip("/").removeprefix("./")
 
 
+def is_inside(base: Path, path: Path) -> bool:
+    """Return True if `path` is `base` or below it, after the code resolves '..' and symlinks."""
+    return path.resolve().is_relative_to(base.resolve())
+
+
+def safe_join(base: Path, rel: str) -> Path:
+    """Join a path from an untrusted file (FOMOD, collection.json) to `base`.
+
+    Raise PipelineError if the result is outside `base` (for example, '../x')."""
+    target = base / norm_rel(rel)
+    if not is_inside(base, target):
+        raise PipelineError(f"The path leaves its directory: {rel!r}")
+    return target
+
+
 def resolve_ci(base: Path, rel: str) -> Path | None:
     """Find `rel` below `base` and ignore the case (the authors make mod archives on Windows)."""
     current = base

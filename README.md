@@ -162,8 +162,30 @@ The container has these security limits:
 - It has no capabilities.
 - Only the mounted folders are writable.
 
-Archive contents are not trusted. mwpipe removes symlinks. If an entry tries to leave the
-extraction folder, the install stops.
+Archive contents and `collection.json` are not trusted. mwpipe removes symlinks. The install stops
+if one of these paths tries to leave its folder:
+
+- an archive entry
+- a FOMOD source or destination
+- a replicate-mode path
+- a bundled file name
+
+The extracted size of one archive has a limit of 10 GiB. A FOMOD install has the same limit. To
+change the limit, use `--extract-limit GIB` or set `MWPIPE_EXTRACT_LIMIT` in `.env`. For a moment,
+an install needs this space twice: in the cache volume and in `ModData`.
+
+The Dockerfile pins each tool: delta_plugin and plox by git commit, and GOCoverify and Lumenaire
+by the SHA-256 of each zip. Renovate updates the tags and the commits. When Renovate changes the
+version of GOCoverify or Lumenaire, the `renovate-hashes` workflow adds a commit with the new SHA-256
+values to the Renovate branch and starts the Docker build. The workflow changes only the values of a
+tool whose version changed. If the zip of an unchanged version changes, the build stops. To get the
+values by hand, run `docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION`.
+
+mwpipe follows a redirect only to HTTPS. It does not send the key again after a redirect to a
+different host. mwpipe does not write a file name with a line break into `openmw.cfg`.
+
+Outside Docker, mwpipe does not use p7zip, because p7zip can write through a symlink in an archive.
+It uses bsdtar instead. The Docker image has 7-Zip, which does not have this problem.
 
 mwpipe mounts the paths at the same location inside the container as on the host. Because of this,
 the paths in `openmw.cfg` are correct for OpenMW and for the tools.

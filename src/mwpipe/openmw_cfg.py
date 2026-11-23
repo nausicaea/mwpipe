@@ -12,9 +12,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mwpipe.util import log
+from mwpipe.util import PipelineError, log
 
 MANAGED = ("fallback-archive", "data", "content", "groundcover")
+# Characters that end a line for str.splitlines(), and NUL. A file name with one of them can add lines to openmw.cfg.
+LINE_BREAKS = frozenset("\0\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029")
 MARKER = "# ---- managed by mwpipe: edits to data/content/groundcover/fallback-archive below are overwritten ----"
 
 
@@ -95,11 +97,15 @@ class OpenMWConfig:
 
     # -- output ------------------------------------------------------------------------------
     def render(self) -> str:
+        """Return the text of openmw.cfg. Raise PipelineError if a managed value has a line break."""
         lines = list(self.other) + ["", MARKER]
-        lines += [f"fallback-archive={a}" for a in dedupe(self.archives)]
-        lines += [f"data={quote(d)}" for d in dedupe(self.data)]
-        lines += [f"content={c}" for c in dedupe(self.content)]
-        lines += [f"groundcover={g}" for g in dedupe(self.groundcover)]
+        for key, values in (("fallback-archive", self.archives), ("data", self.data),
+                            ("content", self.content), ("groundcover", self.groundcover)):
+            for value in dedupe(values):
+                if LINE_BREAKS.intersection(str(value)):
+                    raise PipelineError(f"openmw.cfg: the {key}= value {str(value)!r} has a line break. "
+                                        "Rename the file or remove the mod.")
+                lines.append(f"{key}={quote(value) if key == 'data' else value}")
         return "\n".join(lines) + "\n"
 
     def save(self, path: Path, backup_dir: Path | None = None) -> None:

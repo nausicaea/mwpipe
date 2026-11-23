@@ -1,5 +1,6 @@
 """Tests for the shell scripts and for the security settings in compose.yaml and the Dockerfile."""
 
+import hashlib
 import os
 import re
 import shutil
@@ -38,7 +39,7 @@ class TestWrapperScript(unittest.TestCase):
         return [line for line in self.log.read_text().splitlines() if not line.startswith("PUID=")]
 
     def test_scripts_have_valid_syntax(self):
-        for script in ("mwpipe.sh", "docker/fetch-gitlab-tool.sh"):
+        for script in ("mwpipe.sh", "docker/fetch-gitlab-tool.sh", "docker/update-tool-hashes.sh"):
             result = subprocess.run(["sh", "-n", str(ROOT / script)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -112,6 +113,93 @@ class TestFetchScript(unittest.TestCase):
         self.assertFalse(Path("/out/tool").exists())
 
 
+    def test_print_sha256_writes_dockerfile_args(self):
+        self.fake_curl('case "$*" in *sha256sum*) exit 22;; esac\n'
+                       'while [ $# -gt 0 ]; do [ "$1" = -o ] && printf data > "$2"; shift; done\n')
+        result = self.run_script("--print-sha256", "tool", "1.0", arch="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = hashlib.sha256(b"data").hexdigest()
+        self.assertEqual(result.stdout.splitlines(),
+                         [f"ARG TOOL_SHA256_AMD64={digest}", f"ARG TOOL_SHA256_ARM64={digest}"])
+
+    def test_print_sha256_stops_if_the_published_checksum_differs(self):
+        self.fake_curl('case "$*" in *sha256sum*) echo "%s  x"; exit 0;; esac\n'
+                       'while [ $# -gt 0 ]; do [ "$1" = -o ] && printf data > "$2"; shift; done\n' % ("0" * 64))
+        result = self.run_script("--print-sha256", "tool", "1.0", arch="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not the same", result.stderr)
+
+
+class TestUpdateToolHashes(unittest.TestCase):
+    """docker/update-tool-hashes.sh: the renovate-hashes workflow uses it on Renovate branches."""
+
+    DOCKERFILE = ("ARG GOCOVERIFY_VERSION={g}\nARG GOCOVERIFY_SHA256_AMD64={a}\nARG GOCOVERIFY_SHA256_ARM64={a}\n"
+                  "ARG LUMENAIRE_VERSION=1.0\nARG LUMENAIRE_SHA256_AMD64={a}\nARG LUMENAIRE_SHA256_ARM64={a}\n")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = Path(self._tmp.name, "repo")
+        self.bin = Path(self._tmp.name, "bin")
+        self.repo.mkdir()
+        self.bin.mkdir()
+        curl = self.bin / "curl"  # every zip is "data"; there are no published checksum files
+        curl.write_text('#!/bin/sh\ncase "$*" in *sha256sum*) exit 22;; esac\n'
+                        'while [ $# -gt 0 ]; do [ "$1" = -o ] && printf data > "$2"; shift; done\n')
+        curl.chmod(0o755)
+        self.git("init", "-q")
+        self.dockerfile = self.repo / "Dockerfile"
+        self.dockerfile.write_text(self.DOCKERFILE.format(g="1.0", a="0" * 64))
+        self.git("add", "Dockerfile")
+        self.git("commit", "-qm", "base")
+
+    def git(self, *args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=self.repo, check=True)
+
+    def run_script(self):
+        env = {"PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": self._tmp.name}
+        return subprocess.run(["sh", str(ROOT / "docker/update-tool-hashes.sh"), "HEAD"], cwd=self.repo,
+                              env=env, capture_output=True, text=True)
+
+    def test_only_the_tool_with_a_new_version_gets_new_values(self):
+        self.dockerfile.write_text(self.DOCKERFILE.format(g="1.1", a="0" * 64))
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = hashlib.sha256(b"data").hexdigest()
+        lines = self.dockerfile.read_text().splitlines()
+        self.assertIn(f"ARG GOCOVERIFY_SHA256_AMD64={digest}", lines)
+        self.assertIn(f"ARG GOCOVERIFY_SHA256_ARM64={digest}", lines)
+        self.assertIn(f"ARG LUMENAIRE_SHA256_AMD64={'0' * 64}", lines)  # the version did not change
+
+    def test_no_version_change_changes_nothing(self):
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.dockerfile.read_text(), self.DOCKERFILE.format(g="1.0", a="0" * 64))
+
+    def test_a_missing_sha256_arg_is_an_error(self):
+        self.dockerfile.write_text(self.DOCKERFILE.format(g="1.1", a="0" * 64).replace("GOCOVERIFY_SHA256_ARM64", "X"))
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("has no ARG GOCOVERIFY_SHA256_ARM64", result.stderr)
+
+
+class TestWorkflows(unittest.TestCase):
+    def test_a_run_on_a_renovate_branch_does_not_publish(self):
+        docker = (ROOT / ".github/workflows/docker.yml").read_text()
+        publish = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' "
+                   "&& github.ref_name == github.event.repository.default_branch)")
+        self.assertEqual(docker.count(publish), 2)  # env.PUBLISH and the merge job
+        self.assertNotIn("github.event_name != 'pull_request'", docker)
+
+    def test_renovate_ignores_the_commits_of_the_hash_workflow(self):
+        workflow = (ROOT / ".github/workflows/renovate-hashes.yml").read_text()
+        email = "41898282+github-actions[bot]@users.noreply.github.com"
+        self.assertIn(email, workflow)
+        self.assertIn(email, (ROOT / "renovate.json5").read_text())
+        self.assertIn("startsWith(github.head_ref, 'renovate/')", workflow)
+        self.assertIn("gh workflow run docker.yml", workflow)
+
+
 class TestContainerHardening(unittest.TestCase):
     """The README promises these limits, so a change to them must break a test."""
 
@@ -135,6 +223,16 @@ class TestContainerHardening(unittest.TestCase):
         for line in (ROOT / "Dockerfile").read_text().splitlines():
             if line.startswith("FROM ") and "scratch" not in line:
                 self.assertRegex(line, r"@sha256:[0-9a-f]{64}", line)
+
+    def test_tools_are_pinned_by_commit_and_sha256(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertNotIn("--tag", dockerfile)  # a tag can move; cargo install uses --rev
+        for tool in ("DELTA_PLUGIN", "PLOX"):
+            self.assertRegex(dockerfile, rf"ARG {tool}_COMMIT=[0-9a-f]{{40}}\n")
+            self.assertIn(f'--rev "${tool}_COMMIT"', dockerfile)
+        for tool in ("GOCOVERIFY", "LUMENAIRE"):
+            for arch in ("AMD64", "ARM64"):
+                self.assertRegex(dockerfile, rf"ARG {tool}_SHA256_{arch}=[0-9a-f]{{64}}\n")
 
 
 if __name__ == "__main__":

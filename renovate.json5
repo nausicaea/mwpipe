@@ -8,6 +8,9 @@
   labels: ["dependencies"],
   dependencyDashboard: {enabled: true},
   prConcurrentLimit: 5,
+  // .github/workflows/renovate-hashes.yml pushes the SHA-256 values of the Go tools to Renovate branches.
+  // Without this, Renovate stops updating a branch that has a commit from somebody else.
+  gitIgnoredAuthors: ["41898282+github-actions[bot]@users.noreply.github.com"],
 
   customManagers: [
     {
@@ -18,6 +21,11 @@
       managerFilePatterns: ["/(^|/)Dockerfile$/"],
       matchStrings: [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+ARG \\w+=(?<currentValue>\\S+)",
+        // A tag and the commit it points to, for `cargo install --rev`:
+        //   # renovate: datasource=github-tags depName=group/project digest=commit
+        //   ARG SOMETHING_VERSION=v1.2.3
+        //   ARG SOMETHING_COMMIT=<40 hex chars>
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) digest=commit\\s+ARG \\w+=(?<currentValue>\\S+)\\s+ARG \\w+=(?<currentDigest>[a-f0-9]{40})",
       ],
     },
     {
@@ -40,10 +48,11 @@
       groupName: "python",
     },
     {
-      // These tools come from GitLab CI artifacts; a new tag can lack one, so the PR build must pass.
+      // These tools come from GitLab CI artifacts; a new tag can lack one, and the pinned SHA-256 values change.
       matchDatasources: ["gitlab-tags"],
+      matchPackageNames: ["modding-openmw/gocoverify", "modding-openmw/lumenaire"],
       prBodyNotes: [
-        "GOCoverify and Lumenaire are downloaded from the GitLab CI artifacts of this tag. Merge only if the Docker build job is green.",
+        "GOCoverify and Lumenaire are downloaded from the GitLab CI artifacts of this tag. The renovate-hashes workflow adds a commit with their new SHA-256 values and starts the Docker build. Merge only if that commit is present and the Docker build job is green.",
       ],
     },
   ],

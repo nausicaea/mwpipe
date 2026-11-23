@@ -17,6 +17,7 @@ services:
       MORROWIND_DATA_FILES: ${MORROWIND_DATA_FILES:-}
       DOWNLOADS_DIR: ${DOWNLOADS_DIR:-}           # default: the cache volume
       MWPIPE_COLLECTION: ${MWPIPE_COLLECTION:-}
+      MWPIPE_EXTRACT_LIMIT: ${MWPIPE_EXTRACT_LIMIT:-}   # GiB for one archive, default 10
       MWPIPE_OVERRIDES: /config/overrides.json
       RAYON_NUM_THREADS: ${RAYON_NUM_THREADS:-}   # set to 1 if delta_plugin runs out of memory
     volumes:
