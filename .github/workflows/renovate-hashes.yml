@@ -17,7 +17,7 @@ jobs:
   update:
     # Renovate branches in this repository only. A fork PR gets a read-only token.
     if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'renovate/')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write # push the commit with the new values
       actions: write  # start the docker workflow: a push with GITHUB_TOKEN starts no workflow
