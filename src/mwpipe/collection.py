@@ -29,6 +29,7 @@ def normalize_source(source: dict) -> dict:
 
 @dataclass
 class Mod:
+    """One mod of a collection.json file."""
     index: int                 # position in collection.json, used as a stable tie-breaker
     name: str
     source: dict
@@ -77,6 +78,7 @@ class Mod:
 
 @dataclass
 class Collection:
+    """A collection manifest: its name and its mods, with the load order and the disabled plugins."""
     name: str
     mods: list[Mod]
     rules: list[dict]

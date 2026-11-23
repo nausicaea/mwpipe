@@ -48,6 +48,7 @@ def collection_dir_name(name: str) -> str:
 
 
 class Pipeline:
+    """Runs the pipeline steps. `run` calls the steps in the order that the caller gives."""
     def __init__(self, settings: Settings, client_factory=None, include_optional=False,
                  allow_missing=False, lowercase_dds=False, sort_mode="auto",
                  delta_skip=("Cell", "Dialogue", "DialogueInfo"), enlightened_flames=False, plugins_only=False,

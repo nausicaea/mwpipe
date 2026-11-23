@@ -26,6 +26,7 @@ IGNORED_DIRS = {"fomod", "__macosx", "docs", "documentation", "screenshots"}
 
 
 def looks_like_data_root(path: Path) -> bool:
+    """Return True if `path` looks like a Data Files root (a folder with that name, or a folder with plugin files, BSA files or asset folders)."""
     if path.name.lower() == "data files":
         return True
     for child in path.iterdir():

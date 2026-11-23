@@ -26,6 +26,7 @@ def _steps(text: str) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser. It has the sub-commands run, postprocess, dedupe-downloads and build-collection."""
     p = argparse.ArgumentParser(
         prog="mwpipe",
         description="Install a Nexus Mods collection for OpenMW. Then run the post-processing tools.",
@@ -93,6 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command in `argv` (default: sys.argv).
+
+    Return the exit code: 0 for success, 1 for a PipelineError, 130 for a keyboard interrupt."""
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(levelname).1s %(message)s", stream=sys.stderr)

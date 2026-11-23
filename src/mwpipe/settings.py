@@ -51,6 +51,7 @@ def default_dirs() -> tuple[Path, Path, Path]:
 
 @dataclass
 class Settings:
+    """The paths and options of one run. Use `from_args` to build it from the flags and the environment."""
     openmw_cfg: Path          # the openmw.cfg that OpenMW (and every tool) reads
     data_dir: Path            # root of everything mwpipe writes
     morrowind_data: Path      # vanilla "Data Files" (Morrowind.esm, Morrowind.bsa, ...)
