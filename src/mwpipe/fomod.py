@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+from mwpipe.archives import DEFAULT_LIMIT, GIB, tree_size
 from mwpipe.util import PipelineError, is_inside, log, norm_rel, resolve_ci, safe_join
 
 
@@ -41,10 +42,11 @@ class FomodInstaller:
     """Read a FOMOD ModuleConfig.xml and find the files that the recorded choices install.
 
     Use `plan` to get the list of files and `install` to copy them."""
-    def __init__(self, module_config: Path, choices: list | None):
+    def __init__(self, module_config: Path, choices: list | None, limit: int = DEFAULT_LIMIT):
         self.base = module_config.parent.parent  # paths in the XML are relative to this folder
         self.root = _strip_ns(ET.fromstring(module_config.read_bytes()))
         self.choices = choices or []
+        self.limit = limit  # bytes that `install` copies in total; one folder can be installed many times
         self.flags: dict[str, str] = {}
         self.planned: list[_Install] = []
         self.report: list[tuple[str, str, str, list[tuple[str, bool]]]] = []  # (step, group, type, [(option, chosen)])
@@ -156,6 +158,7 @@ class FomodInstaller:
 
     def install(self, dest: Path) -> None:
         dest.mkdir(parents=True, exist_ok=True)
+        copied = 0
         # Lower priority first, so that files with higher priority overwrite them. The sort is stable for equal priority.
         for item in sorted(self.plan(), key=lambda i: i.priority):
             src = resolve_ci(self.base, item.source) if item.source else self.base
@@ -168,6 +171,10 @@ class FomodInstaller:
                 target = safe_join(dest, item.destination)
             except PipelineError:
                 raise PipelineError(f"FOMOD: the destination {item.destination!r} is outside the mod folder") from None
+            copied += tree_size(src) if src.is_dir() else src.stat().st_size
+            if copied > self.limit:
+                raise PipelineError(f"FOMOD: the installed files are larger than the limit of {self.limit / GIB:g} GiB. "
+                                    "If the installer is correct, increase the limit with --extract-limit.")
             if item.is_folder or src.is_dir():
                 shutil.copytree(src, target, dirs_exist_ok=True)
             else:

@@ -8,12 +8,15 @@
 FROM rust:1-alpine@sha256:8d0e82abfdf9a38071e07cabc5afba4ddbe077631a80e4e742a760c38beadc33 AS rust-tools
 # g++ is needed by delta_plugin's directxtex crate (C++ build script); the others are for plox and git deps.
 RUN apk add --no-cache g++ musl-dev openssl-dev openssl-libs-static git
-# renovate: datasource=gitlab-tags depName=portmod/delta-plugin
+# A git tag can move, so the build uses the commit of the tag. Renovate updates the tag and the commit together.
+# renovate: datasource=gitlab-tags depName=portmod/delta-plugin digest=commit
 ARG DELTA_PLUGIN_VERSION=0.25.3
-# renovate: datasource=github-tags depName=rfuzzo/plox
+ARG DELTA_PLUGIN_COMMIT=757c0da9621c09a2eace7d25e6f101da2cc53efe
+# renovate: datasource=github-tags depName=rfuzzo/plox digest=commit
 ARG PLOX_VERSION=v0.5.0
-RUN cargo install --locked --git https://gitlab.com/portmod/delta-plugin --tag "$DELTA_PLUGIN_VERSION" \
- && cargo install --locked --git https://github.com/rfuzzo/plox --tag "$PLOX_VERSION" plox
+ARG PLOX_COMMIT=f17ec41ccc59f9235db136282b5f76e916cd6e4a
+RUN cargo install --locked --git https://gitlab.com/portmod/delta-plugin --rev "$DELTA_PLUGIN_COMMIT" \
+ && cargo install --locked --git https://github.com/rfuzzo/plox --rev "$PLOX_COMMIT" plox
 
 # ---- Go tools: prebuilt binaries from the GitLab CI artifacts of a pinned tag ----------------
 FROM alpine:3@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS go-tools
@@ -23,12 +26,21 @@ ARG TARGETARCH
 ARG GOCOVERIFY_VERSION=1.1
 # renovate: datasource=gitlab-tags depName=modding-openmw/lumenaire versioning=regex:^(?<major>\d+)\.(?<minor>\d+)(?:-(?<prerelease>test))?$
 ARG LUMENAIRE_VERSION=1.0-test
-# Optional: pin the exact build. Empty = verify against the checksum file published with the zip.
-ARG GOCOVERIFY_SHA256=""
-ARG LUMENAIRE_SHA256=""
+# SHA-256 of each zip, for each architecture. Renovate cannot calculate these: when it changes a version
+# above, the build fails until you set the new values. Get them with:
+#   docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION
+ARG GOCOVERIFY_SHA256_AMD64=5878ac3116d369b248cc46c0f7a8467e6d28db61088829d7f019bedc4def9abf
+ARG GOCOVERIFY_SHA256_ARM64=9237c7925b6e43eadbf8d441b9b2b93a8178e5ba5db71e0ea8f30912ddbcd21f
+ARG LUMENAIRE_SHA256_AMD64=6ff39fe0cd58af6894dd645a80cb55b72f2587c42108932fcb8b39b66462df0c
+ARG LUMENAIRE_SHA256_ARM64=b40fe81f3b46eac11156c9653e0f804ac523596e03692672443a0ceebcaad2b8
 COPY --chmod=0755 docker/fetch-gitlab-tool.sh /usr/local/bin/fetch-gitlab-tool
-RUN fetch-gitlab-tool gocoverify "$GOCOVERIFY_VERSION" "$GOCOVERIFY_SHA256" \
- && fetch-gitlab-tool lumenaire "$LUMENAIRE_VERSION" "$LUMENAIRE_SHA256"
+RUN case "$TARGETARCH" in \
+      amd64) gocoverify_sha="$GOCOVERIFY_SHA256_AMD64" lumenaire_sha="$LUMENAIRE_SHA256_AMD64" ;; \
+      arm64) gocoverify_sha="$GOCOVERIFY_SHA256_ARM64" lumenaire_sha="$LUMENAIRE_SHA256_ARM64" ;; \
+      *) echo "No pinned SHA-256 for TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && fetch-gitlab-tool gocoverify "$GOCOVERIFY_VERSION" "$gocoverify_sha" \
+ && fetch-gitlab-tool lumenaire "$LUMENAIRE_VERSION" "$lumenaire_sha"
 
 # ---- tes3cmd: a single Perl script, pinned to a commit ---------------------------------------
 FROM scratch AS tes3cmd

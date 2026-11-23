@@ -170,6 +170,15 @@ if one of these paths tries to leave its folder:
 - a replicate-mode path
 - a bundled file name
 
+The extracted size of one archive has a limit of 10 GiB. A FOMOD install has the same limit. To
+change the limit, use `--extract-limit GIB` or set `MWPIPE_EXTRACT_LIMIT` in `.env`. For a moment,
+an install needs this space twice: in the cache volume and in `ModData`.
+
+The Dockerfile pins each tool: delta_plugin and plox by git commit, and GOCoverify and Lumenaire
+by the SHA-256 of each zip. When Renovate changes the version of GOCoverify or Lumenaire, the build
+fails until you set the new values. To get them, run
+`docker/fetch-gitlab-tool.sh --print-sha256 NAME VERSION`.
+
 mwpipe follows a redirect only to HTTPS. It does not send the key again after a redirect to a
 different host. mwpipe does not write a file name with a line break into `openmw.cfg`.
 

@@ -361,15 +361,101 @@ class TestSevenZipGuard(unittest.TestCase):
     def test_extract_skips_p7zip_and_uses_bsdtar(self):
         calls = []
 
-        def run(cmd, **kwargs):
+        def banner(cmd, **kwargs):
             calls.append(cmd[0])
-            if cmd == ["7z"]:
-                return subprocess.CompletedProcess(cmd, 0, stdout="p7zip Version 16.02", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="p7zip Version 16.02", stderr="")
+
+        def extractor(cmd, dest, limit):
+            calls.append(cmd[0])
+            return 0, ""
 
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(archives.shutil, "which", return_value="/usr/bin/x"), \
-                mock.patch.object(archives.subprocess, "run", side_effect=run), \
+                mock.patch.object(archives.subprocess, "run", side_effect=banner), \
+                mock.patch.object(archives, "_run_limited", side_effect=extractor), \
                 self.assertLogs("mwpipe", "WARNING"):
             archives.extract(Path(tmp, "a.7z"), Path(tmp, "out"))
         self.assertEqual(calls, ["7z", "bsdtar"])
+
+
+class TestExtractionLimit(unittest.TestCase):
+    """An archive must not fill the disk (a "zip bomb")."""
+
+    LIMIT = 1 << 20  # 1 MiB keeps the tests fast
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.dest = self.tmp / "out"
+        self.dest.mkdir()
+
+    def _run(self, script: str):
+        return archives._run_limited(["sh", "-c", script, "sh", str(self.dest)], self.dest, self.LIMIT)
+
+    def test_small_extraction_passes(self):
+        code, _ = self._run('head -c 1000 /dev/zero > "$1/a"; echo warn >&2')
+        self.assertEqual(code, 0)
+
+    def test_errors_of_the_extractor_are_returned(self):
+        code, stderr = self._run("echo broken archive >&2; exit 2")
+        self.assertEqual((code, stderr.strip()), (2, "broken archive"))
+
+    def test_one_file_larger_than_the_limit_stops_the_extractor(self):
+        code, _ = self._run('exec head -c 3145728 /dev/zero > "$1/big"')
+        self.assertIsNone(code)
+        self.assertLessEqual((self.dest / "big").stat().st_size, self.LIMIT)
+
+    def test_cut_file_is_found_when_the_extractor_continues(self):
+        code, _ = self._run('head -c 3145728 /dev/zero > "$1/big"; exit 0')  # the shell survives `head`
+        self.assertIsNone(code)
+
+    def test_many_files_larger_than_the_limit_stop_the_extractor(self):
+        with mock.patch.object(archives, "_POLL_SECONDS", 0.05):
+            code, _ = self._run('i=0; while [ $i -lt 400 ]; do head -c 65536 /dev/zero > "$1/f$i"; '
+                                'i=$((i + 1)); sleep 0.01; done')
+        self.assertIsNone(code)
+        self.assertLess(len(list(self.dest.iterdir())), 400)
+
+    def test_extract_removes_the_files_and_reports_the_limit(self):
+        (self.dest / "partial").write_text("x")
+        with mock.patch.object(archives.shutil, "which", side_effect=lambda c: "/usr/bin/bsdtar" if c == "bsdtar" else None), \
+                mock.patch.object(archives, "_run_limited", return_value=(None, "")) as run:
+            with self.assertRaises(PipelineError) as ctx:
+                archives.extract(self.tmp / "a.7z", self.dest, self.LIMIT)
+        self.assertEqual(run.call_count, 1)  # no other extractor is tried
+        self.assertIn("--extract-limit", str(ctx.exception))
+        self.assertFalse(self.dest.exists())
+
+    def test_zip_fallback_checks_the_sizes_in_the_headers(self):
+        archive = self.tmp / "bomb.zip"
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("zeros.bin", b"\0" * (2 * self.LIMIT))
+        self.assertLess(archive.stat().st_size, self.LIMIT)
+        with mock.patch.object(archives.shutil, "which", return_value=None), self.assertRaises(PipelineError):
+            archives.extract(archive, self.dest, self.LIMIT)
+        self.assertEqual(list(self.dest.iterdir()), [])
+
+    def test_fomod_copies_count_against_the_limit(self):
+        tree = self.tmp / "tree"
+        (tree / "fomod").mkdir(parents=True)
+        (tree / "big.bsa").write_bytes(b"\0" * (self.LIMIT // 3))
+        copies = "".join(f'<file source="big.bsa" destination="c{i}.bsa"/>' for i in range(5))
+        (tree / "fomod" / "ModuleConfig.xml").write_text(
+            f"<config><requiredInstallFiles>{copies}</requiredInstallFiles></config>")
+        installer = fomod.FomodInstaller(tree / "fomod" / "ModuleConfig.xml", None, self.LIMIT)
+        with self.assertRaises(PipelineError):
+            installer.install(self.tmp / "mod")
+        self.assertLessEqual(archives.tree_size(self.tmp / "mod"), self.LIMIT)
+
+    def test_limit_from_flag_and_environment(self):
+        with mock.patch.dict(os.environ, {"MWPIPE_EXTRACT_LIMIT": ""}):
+            self.assertEqual(settings.extract_limit(None), 10 << 30)
+            self.assertEqual(settings.extract_limit(0.5), 1 << 29)
+        with mock.patch.dict(os.environ, {"MWPIPE_EXTRACT_LIMIT": "25"}):
+            self.assertEqual(settings.extract_limit(None), 25 << 30)
+            self.assertEqual(settings.extract_limit(2), 2 << 30)  # the flag has priority
+        for bad in ("lots", "0", "-1"):
+            with mock.patch.dict(os.environ, {"MWPIPE_EXTRACT_LIMIT": bad}), self.assertRaises(PipelineError):
+                settings.extract_limit(None)
+        self.assertEqual(cli.build_parser().parse_args(["--extract-limit", "3", "postprocess"]).extract_limit, 3.0)

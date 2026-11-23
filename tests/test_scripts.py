@@ -1,5 +1,6 @@
 """Tests for the shell scripts and for the security settings in compose.yaml and the Dockerfile."""
 
+import hashlib
 import os
 import re
 import shutil
@@ -112,6 +113,23 @@ class TestFetchScript(unittest.TestCase):
         self.assertFalse(Path("/out/tool").exists())
 
 
+    def test_print_sha256_writes_dockerfile_args(self):
+        self.fake_curl('case "$*" in *sha256sum*) exit 22;; esac\n'
+                       'while [ $# -gt 0 ]; do [ "$1" = -o ] && printf data > "$2"; shift; done\n')
+        result = self.run_script("--print-sha256", "tool", "1.0", arch="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest = hashlib.sha256(b"data").hexdigest()
+        self.assertEqual(result.stdout.splitlines(),
+                         [f"ARG TOOL_SHA256_AMD64={digest}", f"ARG TOOL_SHA256_ARM64={digest}"])
+
+    def test_print_sha256_stops_if_the_published_checksum_differs(self):
+        self.fake_curl('case "$*" in *sha256sum*) echo "%s  x"; exit 0;; esac\n'
+                       'while [ $# -gt 0 ]; do [ "$1" = -o ] && printf data > "$2"; shift; done\n' % ("0" * 64))
+        result = self.run_script("--print-sha256", "tool", "1.0", arch="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not the same", result.stderr)
+
+
 class TestContainerHardening(unittest.TestCase):
     """The README promises these limits, so a change to them must break a test."""
 
@@ -135,6 +153,16 @@ class TestContainerHardening(unittest.TestCase):
         for line in (ROOT / "Dockerfile").read_text().splitlines():
             if line.startswith("FROM ") and "scratch" not in line:
                 self.assertRegex(line, r"@sha256:[0-9a-f]{64}", line)
+
+    def test_tools_are_pinned_by_commit_and_sha256(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertNotIn("--tag", dockerfile)  # a tag can move; cargo install uses --rev
+        for tool in ("DELTA_PLUGIN", "PLOX"):
+            self.assertRegex(dockerfile, rf"ARG {tool}_COMMIT=[0-9a-f]{{40}}\n")
+            self.assertIn(f'--rev "${tool}_COMMIT"', dockerfile)
+        for tool in ("GOCOVERIFY", "LUMENAIRE"):
+            for arch in ("AMD64", "ARM64"):
+                self.assertRegex(dockerfile, rf"ARG {tool}_SHA256_{arch}=[0-9a-f]{{64}}\n")
 
 
 if __name__ == "__main__":

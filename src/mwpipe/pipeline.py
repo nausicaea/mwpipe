@@ -172,7 +172,7 @@ class Pipeline:
         if previous and previous != md5sum(archive):
             log.info("collection %s revision %d changed upstream since the last run", ref.slug, revision)
         target = self.s.state_dir / "collections" / f"{ref.slug}-{revision}"
-        extract(archive, target)
+        extract(archive, target, self.s.extract_limit)
         manifest = next(target.rglob("collection.json"), None)
         if manifest is None:
             raise PipelineError(f"{archive.name} does not contain collection.json")
@@ -255,7 +255,8 @@ class Pipeline:
             if self.s.dry_run:
                 continue
             hints: list[str] = []
-            roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch", hints if self.show_options else None)
+            roots = install_mod(mod, archive, mod_dir, self.s.cache_dir / "scratch", hints if self.show_options else None,
+                                self.s.extract_limit)
             if hints:
                 log.info("\n".join(hints))
             if self.plugins_only:

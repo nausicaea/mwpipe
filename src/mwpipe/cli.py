@@ -37,6 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     p.add_argument("-v", "--verbose", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="show the changes, but do not write them")
+    p.add_argument("--extract-limit", type=float, metavar="GIB",
+                   help="maximum extracted size of one archive, in GiB (default: $MWPIPE_EXTRACT_LIMIT or 10)")
 
     paths = p.add_argument_group("paths (override environment variables)")
     for flag in ("data-dir", "openmw-cfg", "morrowind-data", "mods-dir", "generated-dir",

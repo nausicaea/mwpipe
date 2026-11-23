@@ -13,7 +13,7 @@ import os
 import shutil
 from pathlib import Path
 
-from mwpipe.archives import extract
+from mwpipe.archives import DEFAULT_LIMIT, extract
 from mwpipe.collection import Mod
 from mwpipe.fomod import FomodInstaller, find_module_config
 from mwpipe.util import PipelineError, log, norm_rel, resolve_ci, safe_join
@@ -93,13 +93,15 @@ def _folder_hints(mod: Mod, archive_name: str, tree: Path, roots: list[Path], pi
     return lines + [f"  [{'x' if r.resolve() in chosen else ' '}] {r.relative_to(tree).as_posix()}" for r in roots]
 
 
-def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: list[str] | None = None) -> list[Path]:
+def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: list[str] | None = None,
+                limit: int = DEFAULT_LIMIT) -> list[Path]:
     """Install `archive` into `mod_dir`. Return its data directories in load order.
 
     If you give `hints`, it receives lines that describe the choices of the archive (FOMOD options,
     alternative data folders). The lines also show which choices were installed.
+    `limit` is the maximum size in bytes of the extracted archive and of the FOMOD install.
     """
-    tree = extract(archive, scratch / "extract")
+    tree = extract(archive, scratch / "extract", limit)
     if mod_dir.exists():
         shutil.rmtree(mod_dir)
     try:
@@ -116,7 +118,7 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
 
         if (config := find_module_config(tree)) and (mod.choices or {}).get("type", "fomod") == "fomod":
             log.info("%s: running FOMOD installer", mod.name)
-            installer = FomodInstaller(config, (mod.choices or {}).get("options"))
+            installer = FomodInstaller(config, (mod.choices or {}).get("options"), limit)
             installer.install(mod_dir)
             if hints is not None:
                 hints += _fomod_hints(mod, archive.name, installer)

@@ -25,6 +25,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from mwpipe.archives import DEFAULT_LIMIT, GIB
 from mwpipe.util import PipelineError
 
 SECRET_FILE = Path("/run/secrets/nexus_api_key")
@@ -64,6 +65,7 @@ class Settings:
     downloads_dir: Path       # archive cache (default: <cache>/downloads); drop manual downloads here
     overrides_file: Path      # optional per-mod tweaks, see README
     dry_run: bool = False
+    extract_limit: int = DEFAULT_LIMIT  # bytes: the maximum extracted size of one archive
 
     @classmethod
     def from_args(cls, args) -> "Settings":
@@ -96,11 +98,25 @@ class Settings:
             downloads_dir=args.downloads_dir or env_path("DOWNLOADS_DIR") or cache_dir / "downloads",
             overrides_file=env_path("MWPIPE_OVERRIDES") or config_dir / "overrides.json",
             dry_run=args.dry_run,
+            extract_limit=extract_limit(getattr(args, "extract_limit", None)),
         )
 
     def ensure_dirs(self) -> None:
         for path in (self.mods_dir, self.generated_dir, self.cache_dir, self.state_dir, self.downloads_dir):
             path.mkdir(parents=True, exist_ok=True)
+
+
+def extract_limit(gib: float | None) -> int:
+    """The extraction limit in bytes, from --extract-limit or MWPIPE_EXTRACT_LIMIT (both in GiB). Default 10 GiB."""
+    if gib is None:
+        text = os.environ.get("MWPIPE_EXTRACT_LIMIT", "").strip()
+        try:
+            gib = float(text) if text else DEFAULT_LIMIT / GIB
+        except ValueError:
+            raise PipelineError(f"MWPIPE_EXTRACT_LIMIT must be a number of GiB, not {text!r}.") from None
+    if not gib > 0:
+        raise PipelineError("The extraction limit must be more than 0 GiB.")
+    return int(gib * GIB)
 
 
 def read_api_key(key_file: Path | None, from_stdin: bool) -> str:
