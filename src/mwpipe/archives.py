@@ -1,7 +1,7 @@
 """Archive extraction for untrusted mod archives (.7z, .zip, .rar, ...).
 
-7-Zip is tried first, bsdtar (libarchive) second. Afterwards the tree is sanitised: symlinks are
-removed, anything that escaped the destination is rejected, and permissions are normalised.
+The code tries 7-Zip first and bsdtar (libarchive) second. Then it makes the tree safe:
+it removes symlinks, rejects each entry that leaves the destination, and sets the permissions.
 """
 
 from __future__ import annotations
@@ -38,11 +38,11 @@ def extract(archive: Path, dest: Path) -> Path:
         with zipfile.ZipFile(archive) as zf:
             for member in zf.namelist():
                 if not (dest / member).resolve().is_relative_to(dest.resolve()):
-                    raise PipelineError(f"{archive.name}: entry escapes extraction dir: {member}")
+                    raise PipelineError(f"{archive.name}: entry leaves the extraction directory: {member}")
             zf.extractall(dest)
         sanitise(dest)
         return dest
-    raise PipelineError(f"Could not extract {archive.name}:\n  " + "\n  ".join(errors or ["no extractor found"]))
+    raise PipelineError(f"Cannot extract {archive.name}:\n  " + "\n  ".join(errors or ["no extractor available"]))
 
 
 def sanitise(root: Path) -> None:
@@ -51,9 +51,9 @@ def sanitise(root: Path) -> None:
         for name in dirnames + filenames:
             path = Path(dirpath, name)
             if path.is_symlink():
-                log.warning("removing symlink from archive: %s", path.relative_to(root))
+                log.warning("removing symlink from the archive: %s", path.relative_to(root))
                 path.unlink()
                 continue
             if not path.resolve().is_relative_to(root_real):
-                raise PipelineError(f"Archive entry escapes the extraction directory: {path}")
+                raise PipelineError(f"Archive entry leaves the extraction directory: {path}")
             path.chmod(0o755 if path.is_dir() else 0o644)

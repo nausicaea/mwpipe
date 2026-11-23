@@ -1,7 +1,7 @@
 """Read, rewrite and write openmw.cfg.
 
-mwpipe owns four keys: data=, fallback-archive=, content= and groundcover=. Every other line
-(encoding, fallback=, comments, ...) is preserved in place. The managed keys are written as one
+mwpipe manages four keys: data=, fallback-archive=, content= and groundcover=. The code keeps every other line
+(encoding, fallback=, comments, ...) in its position. It writes the managed keys as one
 block at the end, in OpenMW order: archives, data paths, plugins, groundcover.
 """
 
@@ -19,7 +19,7 @@ MARKER = "# ---- managed by mwpipe: edits to data/content/groundcover/fallback-a
 
 
 def quote(path: Path | str) -> str:
-    """OpenMW path quoting: wrap in double quotes, escape '&' and '"' with '&'."""
+    """OpenMW path quoting: put the path in double quotes. Put '&' before each '&' and each '"'."""
     return '"' + str(path).replace("&", "&&").replace('"', '&"') + '"'
 
 
@@ -112,7 +112,7 @@ class OpenMWConfig:
 
 
 def dedupe(items: list) -> list:
-    """Drop case-insensitive duplicates, keeping the first occurrence."""
+    """Remove duplicates that differ only in case. Keep the first occurrence."""
     seen, out = set(), []
     for item in items:
         k = str(item).lower()
@@ -123,7 +123,7 @@ def dedupe(items: list) -> list:
 
 
 def import_ini_fallbacks(ini: Path) -> list[tuple[str, str]]:
-    """Convert Morrowind.ini settings to fallback= pairs, exactly like openmw-iniimporter."""
+    """Change the Morrowind.ini settings to fallback= pairs. The result is the same as openmw-iniimporter."""
     keys_file = Path(__file__).parent / "data" / "fallback_keys.txt"
     wanted = [k for k in keys_file.read_text(encoding="utf-8").splitlines() if k and not k.startswith("#")]
     values: dict[str, list[str]] = {}

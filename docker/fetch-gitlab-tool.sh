@@ -1,9 +1,9 @@
 #!/bin/sh
 # fetch-gitlab-tool NAME VERSION [SHA256]
 # Download the Linux build of a modding-openmw Go tool (GOCoverify, Lumenaire) from the GitLab CI
-# artifacts of the git tag VERSION, verify it and install it as /out/NAME.
-# Without SHA256 the checksum file published next to the zip is used, which catches corrupt
-# downloads; pass a SHA256 to pin the exact build against tampering as well.
+# artifacts of the git tag VERSION. Verify it and install it as /out/NAME.
+# If you give no SHA256, the script uses the checksum file that is published next to the zip. This finds
+# corrupted downloads. To prevent tampering, give a SHA256 to pin the exact build.
 set -eu
 name="$1"
 version="$2"

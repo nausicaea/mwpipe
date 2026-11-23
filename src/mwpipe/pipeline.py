@@ -1,16 +1,16 @@
-"""The pipeline steps. Each step is idempotent and persists its results under Settings.state_dir
+"""The pipeline steps. Each step is idempotent. Each step stores its results in Settings.state_dir
 (downloads and hashes in Settings.cache_dir, editable files in Settings.config_dir).
 
   fetch       collection URL/nxm/slug -> collection.json
-  download    every mod archive via the Premium API (files already in the downloads cache are reused)
+  download    every mod archive through the Premium API (the step uses the files that are in the downloads cache already)
   install     extract archives into ModData/<collection-name-slug>/, one data folder per mod
   configure   rewrite data=, fallback-archive=, content=, groundcover= (+ fallback= if missing)
-  clean       (opt-in) tes3cmd clean on collection plugins
-  sort        keep the collection's load order, or sort with plox (see Pipeline.sort)
+  clean       (optional) tes3cmd clean on the collection plugins
+  sort        keep the load order of the collection, or sort with plox (see Pipeline.sort)
   delta       delta_plugin merge  -> Generated/delta-merged.omwaddon
   groundcover GOCoverify          -> Generated/deleted_groundcover.omwaddon, groundcover.omwaddon, meshes/
   lightfix    Lumenaire           -> Generated/Lumenaire.omwaddon
-  textures    report textures that meshes use but no data folder or BSA provides (read-only) (opt-in: --check-textures)
+  textures    report textures that meshes use and no data folder or BSA provides (read-only, optional: --check-textures)
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ LUMENAIRE_DEFAULTS = Path(__file__).parent / "data" / "lumenaire.toml"
 
 
 def collection_dir_name(name: str) -> str:
-    """Directory name for a collection under ModData: its name lowercased, runs of other characters -> '-'."""
+    """Directory name for a collection in ModData: its name in lower case. Each run of other characters changes to '-'."""
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "collection"
 
 
@@ -75,14 +75,14 @@ class Pipeline:
     def client(self) -> NexusClient:
         if self._client is None:
             if self._client_factory is None:
-                raise PipelineError("This step needs the Nexus API but no key was configured.")
+                raise PipelineError("This step needs the Nexus API, but no key is configured.")
             self._client = self._client_factory()
         return self._client
 
     def current(self) -> dict:
         cur = load_json(self.current_file, None)
         if cur is None:
-            raise PipelineError("No collection fetched yet; run the 'fetch' step with a collection URL.")
+            raise PipelineError("No collection is fetched yet. Run the 'fetch' step with a collection URL.")
         return cur
 
     def _collection_dir(self) -> Path:
@@ -93,10 +93,10 @@ class Pipeline:
                                self.overrides, self.include_optional)
 
     def dedupe_downloads(self, only: Path | None = None) -> list[tuple[Path, Path]]:
-        """Remove byte-identical archives from the downloads directory.
+        """Remove identical archives from the downloads directory.
 
-        Returns (removed, kept) pairs. The shortest name is kept; with `only`, just that file is
-        compared and it is the one removed when a twin exists. Honors --dry-run.
+        Return (removed, kept) pairs. The code keeps the shortest name. If you give `only`, the code compares
+        only that file, and removes it if a twin exists. This method obeys --dry-run.
         """
         by_size: dict[int, list[Path]] = {}
         for f in sorted(self.s.downloads_dir.iterdir()) if self.s.downloads_dir.is_dir() else []:
@@ -126,7 +126,7 @@ class Pipeline:
         return merged
 
     def _md5(self, path: Path) -> str:
-        """MD5 with a (size, mtime) cache so re-runs don't re-hash gigabytes of archives."""
+        """MD5 with a (size, mtime) cache. A new run does not hash the same archives again."""
         if self._md5_cache is None:
             self._md5_cache = load_json(self.md5_cache_file, {})
         st = path.stat()
@@ -139,14 +139,14 @@ class Pipeline:
         return digest
 
     def _archives(self) -> dict[str, Path]:
-        """Everything in the downloads cache, keyed by MD5."""
+        """All files in the downloads cache, with the MD5 as key."""
         if self._md5_index is None:
             files = sorted(p for p in self.s.downloads_dir.iterdir() if p.is_file() and p.suffix != ".part")
             self._md5_index = {self._md5(p): p for p in files}
         return self._md5_index
 
     def _find_archive(self, mod: Mod) -> Path | None:
-        """A mod's archive in the downloads cache: by MD5, or by file name when the collection has no MD5."""
+        """The archive of a mod in the downloads cache. Find it by MD5, or by file name if the collection has no MD5."""
         if md5 := (mod.source.get("md5") or "").lower():
             return self._archives().get(md5)
         name = (mod.source.get("logicalFilename") or "").lower()
@@ -174,7 +174,7 @@ class Pipeline:
         extract(archive, target)
         manifest = next(target.rglob("collection.json"), None)
         if manifest is None:
-            raise PipelineError(f"{archive.name} contains no collection.json")
+            raise PipelineError(f"{archive.name} does not contain collection.json")
         save_json(self.current_file, {"slug": ref.slug, "game": ref.game, "revision": revision,
                                       "name": name, "dir": str(manifest.parent.relative_to(self.s.state_dir))})
         log.info("collection %r revision %d: %d mods", name, revision,
@@ -195,7 +195,7 @@ class Pipeline:
                 elif kind == "bundle":
                     bundled = next(bundle_dir.glob(src.get("fileExpression", "") + "*"), None)
                     if bundled is None:
-                        raise PipelineError(f"bundled file for {mod.name} not found in collection")
+                        raise PipelineError(f"the bundled file for {mod.name} is not in the collection")
                     shutil.copy2(bundled, self.s.downloads_dir / bundled.name)
                 elif kind == "direct" and src.get("url", "").startswith("https://"):
                     self._download(mod, src["url"])
@@ -204,8 +204,8 @@ class Pipeline:
             except PipelineError as err:
                 missing.append(f"- {mod.name}: {err}")
         if missing:
-            report = ("These mods are not hosted on Nexus; download them by hand into "
-                      f"{self.s.downloads_dir} (matched by MD5) and run again:\n"
+            report = ("These mods are not hosted on Nexus. Download them by hand into "
+                      f"{self.s.downloads_dir} (mwpipe matches them by MD5) and run again:\n"
                       + "\n".join(missing))
             if not self.allow_missing:
                 raise PipelineError(report)
@@ -231,9 +231,9 @@ class Pipeline:
             archive = self._find_archive(mod)
             if archive is None:
                 if self.allow_missing:
-                    log.warning("not installed (archive missing): %s", mod.name)
+                    log.warning("not installed (archive is missing): %s", mod.name)
                     continue
-                raise PipelineError(f"Archive for {mod.name} is missing; run the download step.")
+                raise PipelineError(f"The archive for {mod.name} is missing. Run the download step.")
             mod_dir = self.s.mods_dir / (collection_dir_name(cur["name"]) if cur.get("name") else cur["slug"]) / mod.dir_name
             spec = _spec_hash(mod, self._md5(archive))
             previous = manifest.get(mod.key)
@@ -245,7 +245,7 @@ class Pipeline:
                 installed[mod.key] = previous
                 continue
             if mod.patches:
-                log.warning("%s: binary patches from the collection are not applied", mod.name)
+                log.warning("%s: mwpipe does not apply the binary patches from the collection", mod.name)
             log.info("installing %s", mod.name)
             if self.s.dry_run:
                 continue
@@ -260,7 +260,7 @@ class Pipeline:
             installed[mod.key] = {"name": mod.name, "spec": spec, "roots": [str(r) for r in roots],
                                   **({"options": hints} if hints else {})}
             save_json(self.manifest_file, {**manifest, **installed})
-        # Remember the data order for `configure`; drop mods no longer in the collection.
+        # Store the data order for `configure`. Remove the mods that are no longer in the collection.
         if not self.s.dry_run:
             ordered = [installed[m.key] for m in mods if m.key in installed]
             save_json(self.manifest_file, {**installed, "_order": [r for e in ordered for r in e["roots"]]})
@@ -287,8 +287,8 @@ class Pipeline:
         if order is None:  # no author load order: masters first, then data order (plox refines it)
             is_master = lambda p: p.suffix.lower() in (".esm", ".omwgame")  # noqa: E731
             order = [p.name for p in sorted(available.values(), key=lambda p: not is_master(p))]
-        # Base masters come first, unless the collection's own order puts a plugin ahead of one
-        # (e.g. an .esm that must load before Bloodmoon.esm): then its positions are kept.
+        # Base masters are first. If the order of the collection puts a plugin before a base master
+        # (for example, an .esm that must load before Bloodmoon.esm), keep the positions of the collection.
         base_l = {m.lower() for m in BASE_MASTERS}
         names = [n.lower() for n in order]
         keep_positions = any(n in base_l and any(o not in base_l for o in names[:i]) for i, n in enumerate(names))
@@ -296,10 +296,10 @@ class Pipeline:
         for name in [*order, *ov.get("extra_content", [])]:
             path = available.get(name.lower())
             if path is None:
-                log.warning("load order lists %s, but no installed mod provides it", name)
+                log.warning("the load order has %s, but no installed mod provides it", name)
             elif name.lower() not in disabled:
                 content.append(path.name)
-        # Lua mods and .omwaddon files are usually absent from Vortex's Morrowind load order.
+        # The Vortex Morrowind load order usually does not have Lua mods and .omwaddon files.
         listed = {c.lower() for c in content}
         for key, path in available.items():
             if key not in listed and key not in disabled and path.suffix.lower() in (".omwscripts", ".omwaddon"):
@@ -334,7 +334,7 @@ class Pipeline:
         log.info("tes3cmd cleaned %d of %d plugins", len(changed), len(targets))
 
     def strip_generated(self) -> None:
-        """Remove our generated plugins so the tools never merge their own previous output."""
+        """Remove the generated plugins. Then the tools do not merge their own previous output."""
         cfg = self.load_cfg()
         generated = {g.lower() for g in tools.GENERATED_CONTENT}
         cfg.content = [c for c in cfg.content if c.lower() not in generated]
@@ -344,25 +344,25 @@ class Pipeline:
         self.save_cfg(cfg)
 
     def sort(self) -> None:
-        """Decide the plugin order.
+        """Set the plugin order.
 
-        The collection's load order is what its author tested, so by default ("auto") it is kept
-        and plox only runs when the collection has none or you added plugins via overrides.
-        "plox" always sorts; "collection" never does.
+        The author tested the load order of the collection. By default ("auto"), the code keeps it.
+        plox runs only if the collection has no load order or if you add plugins in the overrides.
+        "plox" always sorts. "collection" never sorts.
         """
         has_order = self.current_file.exists() and self.collection().plugin_order() is not None
         rules = list(self.overrides.get("plox_rules", []))
         added = bool(self.overrides.get("extra_content"))
         if self.sort_mode == "collection" or (self.sort_mode == "auto" and has_order and not added):
-            log.info("keeping the collection's load order")
+            log.info("keeping the load order of the collection")
             if rules:
-                log.warning("plox_rules ignored: the collection's load order is kept (use --sort plox to apply them)")
+                log.warning("plox_rules ignored: the load order of the collection is kept (use --sort plox to apply them)")
             return
         before = self.load_cfg()
         tools.plox_sort(self.s.openmw_cfg, self.s.cache_dir / "plox", self.s.dry_run, rules)
         after = self.load_cfg()
         if sorted(map(str.lower, before.content)) != sorted(map(str.lower, after.content)):
-            log.error("plox changed the set of plugins (not just their order); restoring")
+            log.error("plox changed the set of plugins (not only their order); restoring")
             self.save_cfg(before)
         else:
             self.save_cfg(after)  # normalise layout back into the managed block
@@ -387,7 +387,7 @@ class Pipeline:
         self._register([tools.LIGHTS_OUTPUT])
 
     def textures(self) -> None:
-        """Report textures the winning meshes refer to that nothing provides, and which mod asked for them."""
+        """Report the textures that the winning meshes use and that nothing provides. Show which mod needs each texture."""
         cfg = self.load_cfg()
         wanted = {a.lower() for a in cfg.archives}
         archives = [p for d in cfg.data if d.is_dir() for p in sorted(d.iterdir())
@@ -399,7 +399,7 @@ class Pipeline:
         if not self.s.dry_run:
             for name in [*content, *groundcover]:
                 if not (self.s.generated_dir / name).is_file():
-                    raise PipelineError(f"expected {name} in {self.s.generated_dir}, but it was not created")
+                    raise PipelineError(f"{name} is not in {self.s.generated_dir}, but the tool must create it")
         cfg = self.load_cfg()
         cfg.content += content
         cfg.groundcover += list(groundcover)
@@ -416,14 +416,14 @@ class Pipeline:
                 stripped = True
             if step == "fetch":
                 if ref is None:
-                    raise PipelineError("The fetch step needs a collection URL, nxm link or slug.")
+                    raise PipelineError("The fetch step needs a collection URL, an nxm link or a slug.")
                 self.fetch(ref)
             else:
                 getattr(self, step)()
 
 
 def _plugins_by_name(data_dirs: list[Path]) -> dict[str, Path]:
-    """Lower-cased plugin name -> file, honouring OpenMW's rule that later data dirs win."""
+    """Map each lower-case plugin name to its file. Use the OpenMW rule: later data directories have priority."""
     found: dict[str, Path] = {}
     for root in data_dirs:
         if root.is_dir():
@@ -435,7 +435,7 @@ def _plugins_by_name(data_dirs: list[Path]) -> dict[str, Path]:
 
 
 def plugin_masters(path: Path) -> list[str]:
-    """Master names from a TES3-format plugin header; [] for anything else (scripts, unreadable files)."""
+    """Master names from the header of a TES3-format plugin. Return [] for anything else (scripts, files that cannot be read)."""
     if path.suffix.lower() not in (".esp", ".esm", ".omwaddon", ".omwgame"):
         return []
     try:
@@ -456,7 +456,7 @@ def plugin_masters(path: Path) -> list[str]:
 
 
 def _needs_lua_records(path: Path, available: dict[str, Path], _seen: frozenset = frozenset()) -> bool:
-    """True if the plugin, or any of its masters, holds OpenMW's LUAL records, which tes3cmd rejects."""
+    """Return True if the plugin or one of its masters has OpenMW LUAL records. tes3cmd rejects these records."""
     try:
         if b"LUAL" in path.read_bytes():
             return True
@@ -468,7 +468,7 @@ def _needs_lua_records(path: Path, available: dict[str, Path], _seen: frozenset 
 
 
 def _drop_missing_masters(content: list[str], available: dict[str, Path]) -> list[str]:
-    """Remove plugins whose masters are not (or no longer) in the content list; OpenMW tools abort on them."""
+    """Remove the plugins that have masters that are not in the content list. The OpenMW tools stop when they find such plugins."""
     content = list(content)
     while True:
         present = {c.lower() for c in content}
