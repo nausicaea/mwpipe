@@ -37,6 +37,29 @@ USER_AGENT = f"mwpipe/{__version__}"
 MULTIPART_LIMIT = 100 * 1024 * 1024  # larger files need the multipart upload API
 
 
+class _SafeRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to HTTPS. Send the API key again only to api.nexusmods.com.
+
+    The default handler of urllib also follows redirects to http:// and copies every header, the API key too."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urlsplit(newurl)
+        if target.scheme != "https":
+            raise PipelineError(f"The code does not follow a redirect that is not HTTPS: {newurl}")
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and target.hostname != API_HOST:
+            new.remove_header("Apikey")  # urllib stores header names with str.capitalize()
+        return new
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirects)
+
+
+def _open(request: urllib.request.Request, timeout: float):
+    """Open `request` with the redirect rules of `_SafeRedirects`. Every HTTP request of mwpipe uses this function."""
+    return _OPENER.open(request, timeout=timeout)
+
+
 class ApiError(PipelineError):
     """An HTTP error from the Nexus API. The caller uses `status` to decide if it must use a fallback."""
 
@@ -94,7 +117,7 @@ class NexusClient:
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         for attempt in range(retries):
             try:
-                with urllib.request.urlopen(request, timeout=60) as resp:
+                with _open(request, timeout=60) as resp:
                     raw = resp.read()
                     return json.loads(raw) if raw.strip() else {}
             except urllib.error.HTTPError as err:
@@ -225,8 +248,7 @@ def put_presigned(url: str, path: Path, filename: str, md5_hex: str) -> None:
                "Content-MD5": base64.b64encode(bytes.fromhex(md5_hex)).decode()}
     try:
         with path.open("rb") as fh:
-            urllib.request.urlopen(urllib.request.Request(url, data=fh, headers=headers, method="PUT"),
-                                   timeout=300).read()
+            _open(urllib.request.Request(url, data=fh, headers=headers, method="PUT"), timeout=300).read()
     except urllib.error.HTTPError as err:
         raise PipelineError(f"Upload to storage failed ({err.code}): {err.read().decode(errors='replace')[:300]}") from None
 
@@ -251,7 +273,7 @@ def download(url: str, dest: Path, md5: str | None = None) -> Path:
     digest = hashlib.md5()
     request = urllib.request.Request(encode_url(url), headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=120) as resp, tmp.open("wb") as out:
+        with _open(request, timeout=120) as resp, tmp.open("wb") as out:
             for chunk in iter(lambda: resp.read(1 << 20), b""):
                 digest.update(chunk)
                 out.write(chunk)

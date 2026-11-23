@@ -162,8 +162,19 @@ The container has these security limits:
 - It has no capabilities.
 - Only the mounted folders are writable.
 
-Archive contents are not trusted. mwpipe removes symlinks. If an entry tries to leave the
-extraction folder, the install stops.
+Archive contents and `collection.json` are not trusted. mwpipe removes symlinks. The install stops
+if one of these paths tries to leave its folder:
+
+- an archive entry
+- a FOMOD source or destination
+- a replicate-mode path
+- a bundled file name
+
+mwpipe follows a redirect only to HTTPS. It does not send the key again after a redirect to a
+different host. mwpipe does not write a file name with a line break into `openmw.cfg`.
+
+Outside Docker, mwpipe does not use p7zip, because p7zip can write through a symlink in an archive.
+It uses bsdtar instead. The Docker image has 7-Zip, which does not have this problem.
 
 mwpipe mounts the paths at the same location inside the container as on the host. Because of this,
 the paths in `openmw.cfg` are correct for OpenMW and for the tools.

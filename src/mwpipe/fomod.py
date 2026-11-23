@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from mwpipe.util import PipelineError, log, norm_rel, resolve_ci
+from mwpipe.util import PipelineError, is_inside, log, norm_rel, resolve_ci, safe_join
 
 
 @dataclass
@@ -162,7 +162,12 @@ class FomodInstaller:
             if src is None:
                 log.warning("FOMOD: missing source %r", item.source)
                 continue
-            target = dest / norm_rel(item.destination)
+            if not is_inside(self.base, src):  # a malicious ModuleConfig.xml can name '../..' or a symlinked folder
+                raise PipelineError(f"FOMOD: the source {item.source!r} is outside the archive")
+            try:
+                target = safe_join(dest, item.destination)
+            except PipelineError:
+                raise PipelineError(f"FOMOD: the destination {item.destination!r} is outside the mod folder") from None
             if item.is_folder or src.is_dir():
                 shutil.copytree(src, target, dirs_exist_ok=True)
             else:

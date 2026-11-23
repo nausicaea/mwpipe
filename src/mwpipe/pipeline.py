@@ -31,7 +31,7 @@ from mwpipe.nexus import CollectionRef, NexusClient, download, filename_from_url
 from mwpipe.openmw_cfg import OpenMWConfig, dedupe, import_ini_fallbacks
 from mwpipe.settings import Settings
 from mwpipe.textures import report as report_textures, scan_missing_textures
-from mwpipe.util import PipelineError, load_json, log, md5sum, save_json
+from mwpipe.util import PipelineError, is_inside, load_json, log, md5sum, save_json
 
 ALL_STEPS = ["fetch", "download", "install", "configure", "clean",
              "sort", "delta", "groundcover", "lightfix", "textures"]
@@ -194,7 +194,11 @@ class Pipeline:
                     self.client.require_premium()
                     self._download(mod, self.client.file_url(game, int(src["modId"]), int(src["fileId"])))
                 elif kind == "bundle":
-                    bundled = next(bundle_dir.glob(src.get("fileExpression", "") + "*"), None)
+                    expression = src.get("fileExpression", "")
+                    if "/" in expression or "\\" in expression:  # glob() accepts '..': stay in bundled/
+                        raise PipelineError(f"the bundled file name of {mod.name} has a path separator: {expression!r}")
+                    bundled = next((p for p in bundle_dir.glob(expression + "*")
+                                    if p.is_file() and is_inside(bundle_dir, p)), None)
                     if bundled is None:
                         raise PipelineError(f"the bundled file for {mod.name} is not in the collection")
                     shutil.copy2(bundled, self.s.downloads_dir / bundled.name)

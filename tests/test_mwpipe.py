@@ -536,7 +536,7 @@ class TestDownloadUrl(unittest.TestCase):
         import urllib.error
         from mwpipe.nexus import download
         with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("boom")):
+                mock.patch("mwpipe.nexus._open", side_effect=urllib.error.URLError("boom")):
             with self.assertRaises(PipelineError):
                 download("https://cdn.example/x.7z", Path(tmp, "x.7z"))
 

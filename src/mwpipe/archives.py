@@ -14,6 +14,25 @@ from pathlib import Path
 
 from mwpipe.util import PipelineError, log
 
+_SEVEN_ZIP_OK: dict[str, bool] = {}
+
+
+def _seven_zip_is_safe(binary: str) -> bool:
+    """Return False for p7zip. p7zip is not maintained, and it can write through a symlink from the archive.
+
+    The Docker image has 7-Zip from Alpine, which is safe. p7zip is possible when mwpipe runs outside Docker."""
+    if binary not in _SEVEN_ZIP_OK:
+        try:
+            banner = subprocess.run([binary], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                    timeout=30).stdout
+        except (OSError, subprocess.SubprocessError):
+            banner = "p7zip"  # cannot identify it: do not use it
+        _SEVEN_ZIP_OK[binary] = "p7zip" not in banner.lower()
+        if not _SEVEN_ZIP_OK[binary]:
+            log.warning("not using %s: it is p7zip, which is not safe for untrusted archives. "
+                        "mwpipe uses bsdtar. Install 7-Zip 21 or later, or run mwpipe in Docker.", binary)
+    return _SEVEN_ZIP_OK[binary]
+
 
 def extract(archive: Path, dest: Path) -> Path:
     """Extract `archive` into a new `dest` directory and return `dest`.
@@ -29,7 +48,7 @@ def extract(archive: Path, dest: Path) -> Path:
     ]
     errors = []
     for cmd in commands:
-        if shutil.which(cmd[0]) is None:
+        if shutil.which(cmd[0]) is None or (cmd[0] == "7z" and not _seven_zip_is_safe(cmd[0])):
             continue
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:

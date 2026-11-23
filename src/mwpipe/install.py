@@ -16,7 +16,7 @@ from pathlib import Path
 from mwpipe.archives import extract
 from mwpipe.collection import Mod
 from mwpipe.fomod import FomodInstaller, find_module_config
-from mwpipe.util import PipelineError, log, norm_rel, resolve_ci
+from mwpipe.util import PipelineError, log, norm_rel, resolve_ci, safe_join
 
 PLUGIN_EXTS = {".esm", ".esp", ".omwaddon", ".omwgame", ".omwscripts"}
 ARCHIVE_EXTS = {".bsa", ".ba2"}
@@ -62,13 +62,16 @@ def install_from_hashes(tree: Path, hashes: list[dict], dest: Path) -> int:
     copied = 0
     for entry in hashes:
         want = norm_rel(entry["path"])
+        try:
+            target = safe_join(dest, want)
+        except PipelineError:
+            raise PipelineError(f"replicate: the path {entry['path']!r} is outside the mod folder") from None
         candidates = [p for p in index.get(Path(want).name.lower(), [])
                       if norm_rel(str(p.relative_to(tree))).lower().endswith(want.lower())]
         if not candidates:
             log.warning("replicate: %s is not in the archive", want)
             continue
         src = min(candidates, key=lambda p: len(p.parts))
-        target = dest / want
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target)
         copied += 1
