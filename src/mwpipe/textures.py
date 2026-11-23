@@ -24,6 +24,7 @@ _REF = re.compile(rb"[\x20-\x7e]{3,260}?\.(?:dds|tga|bmp|jpg|png)(?![\x20-\x7e])
 
 @dataclass
 class MissingTextures:
+    """The result of a texture scan: the missing textures, and the mods and meshes that use them."""
     # texture (lower case, "textures/" stripped, no extension) -> [(mod, mesh path inside the data folder)]
     missing: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     meshes: int = 0

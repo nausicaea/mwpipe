@@ -16,6 +16,10 @@ from mwpipe.util import PipelineError, log
 
 
 def extract(archive: Path, dest: Path) -> Path:
+    """Extract `archive` into a new `dest` directory and return `dest`.
+
+    Try 7-Zip, then bsdtar, then Python zip support. Make the tree safe after each success.
+    Raise PipelineError if no extractor can read the archive or an entry leaves `dest`."""
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)
@@ -46,6 +50,10 @@ def extract(archive: Path, dest: Path) -> Path:
 
 
 def sanitise(root: Path) -> None:
+    """Make an extracted tree safe.
+
+    Remove each symlink. Set the permissions of files to 0644 and of directories to 0755.
+    Raise PipelineError if an entry resolves to a path outside `root`."""
     root_real = root.resolve()
     for dirpath, dirnames, filenames in os.walk(root):
         for name in dirnames + filenames:

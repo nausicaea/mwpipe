@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       contents: read
+      checks: write # the test report is a check run
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,7 +26,23 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
-      - run: python -m unittest discover -s tests -v
+      - run: python -m pip install coverage==7.6.1 ruff==0.8.6 unittest-xml-reporting==3.2.0
+      - run: python -m ruff check src tests
+      - run: python -m coverage run -m xmlrunner discover -s tests -o test-results
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        run: |
+          python -m coverage report
+          { echo "### Coverage"; echo; python -m coverage report --format=markdown; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Test report
+        if: ${{ !cancelled() }}
+        continue-on-error: true # a read-only token (fork PR) must not fail the job
+        uses: mikepenz/action-junit-report@a16be3a69023e9bd7e748ede768b3282ea7b30ce # v6.7.1
+        with:
+          report_paths: test-results/*.xml
+          check_name: Test results
+          job_summary: true
+          comment: false
 
   build:
     needs: test

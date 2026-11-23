@@ -43,6 +43,7 @@ def unquote(value: str) -> str:
 
 @dataclass
 class OpenMWConfig:
+    """The content of openmw.cfg: the lines that mwpipe keeps and the four keys that it manages."""
     other: list[str] = field(default_factory=list)  # preserved lines, in order
     archives: list[str] = field(default_factory=list)
     data: list[Path] = field(default_factory=list)

@@ -37,6 +37,7 @@ MAGIC_SUFFIX = ((b"PK\x03\x04", ".zip"), (b"7z\xbc\xaf\x27\x1c", ".7z"), (b"Rar!
 
 @dataclass
 class ListedMod:
+    """A mod of a mod list after resolution: the list entry with the name, version, file ID and archive."""
     entry: ModEntry
     name: str
     version: str

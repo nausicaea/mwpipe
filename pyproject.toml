@@ -23,3 +23,18 @@ version_scheme = "pep440"
 version_provider = "pep621"
 update_changelog_on_bump = true
 major_version_zero = true
+
+[tool.coverage.run]
+source = ["src/mwpipe"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Errors and unused code only. Line length and style rules are not enforced.
+select = ["E4", "E7", "E9", "F", "W6"]

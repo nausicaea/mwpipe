@@ -215,8 +215,8 @@ class TestPipeline(TempDir):
                 touch(s.generated_dir / out)
             if name == "plox":  # simulate plox: rewrite content lines in a new order
                 text = cfg_path.read_text().splitlines()
-                content = [l for l in text if l.startswith("content=")]
-                rest = [l for l in text if not l.startswith("content=")]
+                content = [line for line in text if line.startswith("content=")]
+                rest = [line for line in text if not line.startswith("content=")]
                 cfg_path.write_text("\n".join(rest + content[::-1]) + "\n")
         calls = []
         post = ["sort", "delta", "groundcover", "lightfix"]

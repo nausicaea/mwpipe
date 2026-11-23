@@ -47,6 +47,7 @@ class ApiError(PipelineError):
 
 @dataclass(frozen=True)
 class CollectionRef:
+    """A reference to a collection: game, slug and optional revision number."""
     game: str
     slug: str
     revision: int | None = None
@@ -74,6 +75,7 @@ def parse_collection_ref(text: str, default_game: str = "morrowind") -> Collecti
 
 
 class NexusClient:
+    """Client for the Nexus APIs. It sends the API key only to api.nexusmods.com."""
     def __init__(self, api_key: str):
         self._key = api_key
         self._user: dict | None = None

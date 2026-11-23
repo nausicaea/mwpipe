@@ -57,6 +57,7 @@ class Pick:
 
 @dataclass(frozen=True)
 class ModEntry:
+    """One mod URL of a mod list, with its game, mod ID and file ID (if the URL has them)."""
     url: str
     game: str | None = None      # Nexus game domain, None for direct downloads
     mod_id: int | None = None
@@ -73,6 +74,7 @@ class ModEntry:
 
 
 def parse_entry(line: str) -> ModEntry:
+    """Parse one URL line of a mod list. Raise PipelineError if the URL is not supported."""
     url = line.strip()
     parts = urllib.parse.urlsplit(url)
     query = urllib.parse.parse_qs(parts.query)

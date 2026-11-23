@@ -38,6 +38,9 @@ def _strip_ns(tree: ET.Element) -> ET.Element:
 
 
 class FomodInstaller:
+    """Read a FOMOD ModuleConfig.xml and find the files that the recorded choices install.
+
+    Use `plan` to get the list of files and `install` to copy them."""
     def __init__(self, module_config: Path, choices: list | None):
         self.base = module_config.parent.parent  # paths in the XML are relative to this folder
         self.root = _strip_ns(ET.fromstring(module_config.read_bytes()))
