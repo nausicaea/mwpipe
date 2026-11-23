@@ -1,14 +1,14 @@
-"""Mod list -> Nexus collection.
+"""Change a mod list to a Nexus collection.
 
-  resolve   each Nexus URL -> mod name, version and file id (v3 API); other HTTPS URLs stay "direct"
-  download  every archive into the downloads cache (cached by MD5, so re-runs are cheap)
-  install   into a scratch openmw.cfg under the build directory, never into your real one
-  sort      plox sorts the plugins; the result becomes the collection's load order
-  bundle    collection.json (+ load order) packed as an archive
-  upload    upload session -> finalise -> create the collection (or a new revision of one)
+  resolve   change each Nexus URL to a mod name, version and file ID (v3 API); other HTTPS URLs stay "direct"
+  download  every archive into the downloads cache (the cache uses the MD5, so a new run is fast)
+  install   into a scratch openmw.cfg in the build directory (not into your real openmw.cfg)
+  sort      plox sorts the plugins. The result is the load order of the collection
+  bundle    collection.json (with the load order) in an archive
+  upload    upload session, finalise, then create the collection (or a new revision of a collection)
 
-The collection is created as a draft revision. Order of the mods in the list is kept as the
-data directory order, so later entries override earlier ones, as in OpenMW's data= semantics.
+The code creates the collection as a draft revision. The order of the mods in the list is the
+data directory order. Later entries override earlier entries (OpenMW data= semantics).
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class ListedMod:
 
     @property
     def choices(self) -> dict | None:
-        """The picks in Vortex's collection.json format (names only; Vortex's option index is not known here)."""
+        """The picks in the Vortex collection.json format (names only; the code does not know the Vortex option index)."""
         steps: dict[str, dict[str, list]] = {}
         for step, group, option in self.fomod:
             steps.setdefault(step, {}).setdefault(group, []).append({"name": option})
@@ -63,7 +63,7 @@ class ListedMod:
 
     @property
     def override_key(self) -> str:
-        """The key under which collection.Mod looks up this mod's overrides."""
+        """The key that collection.Mod uses to find the overrides of this mod."""
         return f"{self.entry.mod_id}-{self.file_id}" if self.entry.is_nexus else self.name
 
     @property
@@ -74,7 +74,7 @@ class ListedMod:
 
 # -- resolving and downloading ---------------------------------------------------------------------
 def direct_name(url: str) -> str:
-    """A readable name for a non-Nexus URL: the project in a GitLab/GitHub path, else the file stem."""
+    """A readable name for a URL that is not Nexus: the project in a GitLab or GitHub path, or else the file stem."""
     parts = urllib.parse.urlsplit(url)
     segments = [urllib.parse.unquote(s) for s in parts.path.split("/") if s]
     if "-" in segments and segments.index("-") > 0:
@@ -85,7 +85,7 @@ def direct_name(url: str) -> str:
 
 
 def _file_choices_hint(client: NexusClient, entry: ModEntry, mod_name: str, picked: int) -> None:
-    """Say so when a line without file_id took the primary file but the mod offers other current files."""
+    """Write a hint if a line has no file_id, the code used the primary file, and the mod has other current files."""
     files = [f for f in client.mod_files(entry.game, entry.mod_id)
              if f.get("category_name") in ("MAIN", "OPTIONAL") and f.get("file_id") is not None]
     if len(files) < 2:
@@ -103,7 +103,7 @@ def _file_choices_hint(client: NexusClient, entry: ModEntry, mod_name: str, pick
     primary = next((label(f) for f in files if f["file_id"] == picked), str(picked))
     shown = ", ".join(label(f) for f in files[:6]) + (f", and {len(files) - 6} more" if len(files) > 6 else "")
     log.info("%s (mod %d): no file_id given, using the primary file %s; the mod offers %d files: %s. "
-             "Add ?file_id=N to pick one or more.", mod_name, entry.mod_id, primary, len(files), shown)
+             "Add ?file_id=N to select one or more files.", mod_name, entry.mod_id, primary, len(files), shown)
 
 
 def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -> list[ListedMod]:
@@ -119,7 +119,7 @@ def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -
             if file_id is None:
                 main = page.get("main_file_version")
                 if not main:
-                    raise PipelineError("it has no downloadable main file (none passed the security scan)")
+                    raise PipelineError("it has no main file that you can download (no file passed the security scan)")
                 file_id = int(main["game_scoped_id"])
                 _file_choices_hint(client, entry, page["name"], file_id)
             version = client.file_version(entry.game, file_id)
@@ -132,13 +132,13 @@ def resolve(client: NexusClient, entries: list[ModEntry], allow_missing: bool) -
     if problems:
         report = "Could not resolve:\n" + "\n".join(problems)
         if not allow_missing:
-            raise PipelineError(report + "\nFix the list, or use --allow-missing to leave these mods out.")
+            raise PipelineError(report + "\nCorrect the list, or use --allow-missing to omit these mods.")
         log.warning("%s\nleaving them out", report)
     return mods
 
 
 def _sniff_suffix(path: Path) -> Path:
-    """Direct downloads often end in '/download'; name the archive after what it really is."""
+    """Direct downloads often end in '/download'. Give the archive its real name."""
     head = path.read_bytes()[:8] if path.stat().st_size else b""
     for magic, suffix in MAGIC_SUFFIX:
         if head.startswith(magic):
@@ -147,7 +147,7 @@ def _sniff_suffix(path: Path) -> Path:
 
 
 def _existing(downloads: Path, names: list[str], size: int | None) -> Path | None:
-    """The first of `names` already in the downloads directory (and of the right size, when known)."""
+    """The first of `names` that is in the downloads directory already (with the correct size, if the size is known)."""
     for name in names:
         path = downloads / name
         if path.is_file() and (size is None or path.stat().st_size == size):
@@ -156,7 +156,7 @@ def _existing(downloads: Path, names: list[str], size: int | None) -> Path | Non
 
 
 def _direct_candidates(downloads: Path, stem: str) -> list[str]:
-    """Earlier downloads of a direct URL: '<stem>' or '<stem>.<suffix>' (the suffix is sniffed afterwards)."""
+    """Earlier downloads of a direct URL: '<stem>' or '<stem>.<suffix>' (the code finds the suffix later)."""
     if not downloads.is_dir():
         return []
     return sorted(f.name for f in downloads.iterdir()
@@ -165,11 +165,11 @@ def _direct_candidates(downloads: Path, stem: str) -> list[str]:
 
 def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], index_file: Path,
                    legacy_index: Path | None = None) -> None:
-    """Fill in `archive` and `md5` for every mod, downloading only what is not in the downloads cache yet.
+    """Set `archive` and `md5` for every mod. Download only the files that are not in the downloads cache.
 
-    The index (mod -> file) lives in the cache directory and is shared by all collections. If it is
-    missing or stale, files already in the downloads directory are adopted by name and size, and a fresh
-    download that turns out to be byte-identical to an existing file is merged into it.
+    The index (mod to file) is in the cache directory. All collections use it. If the index is
+    missing or old, the code adopts the files in the downloads directory by name and size. If a new
+    download is identical to an existing file, the code merges it into that file.
     """
     index = {**(load_json(legacy_index, {}) if legacy_index else {}), **load_json(index_file, {})}
     downloads = pipe.s.downloads_dir
@@ -215,8 +215,8 @@ def fetch_archives(pipe: Pipeline, client: NexusClient, mods: list[ListedMod], i
 
 
 def apply_picks(picks: list[Pick], mods: list[ListedMod]) -> None:
-    """Give each `+` line to the file it names. This needs the resolved file ids: a list line without
-    file_id stands for the mod's primary file."""
+    """Give each `+` line to the file that it names. This needs the resolved file IDs. A list line without
+    file_id means the primary file of the mod."""
     problems = []
     for pick in picks:
         found = [m for m in mods if pick.applies_to(m.entry.game, m.entry.mod_id, m.file_id, m.entry.url)]
@@ -227,7 +227,7 @@ def apply_picks(picks: list[Pick], mods: list[ListedMod]) -> None:
                 problems.append(f"line {pick.line}: file {pick.ref.file_id} of that mod is not in the list "
                                 f"(it has {', '.join(ids)}): {pick.ref.url}")
             else:
-                log.warning("line %d: '+' of a mod left out of the collection is ignored: %s", pick.line, pick.ref.url)
+                log.warning("line %d: '+' of a mod that is not in the collection is ignored: %s", pick.line, pick.ref.url)
             continue
         if pick.folder:
             found[0].data.append(pick.folder)
@@ -257,9 +257,9 @@ def v3_manifest(info: dict, mods: list[ListedMod], game: str) -> dict:
 
 def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: list[str],
                     disabled: list[str] = ()) -> dict:
-    """collection.json as stored inside a collection bundle (camelCase, with the plox load order).
+    """collection.json as it is in a collection bundle (camelCase, with the plox load order).
 
-    This is the shape `mwpipe run` reads back: with a loadOrder present it keeps the order as is.
+    `mwpipe run` reads this format. If a loadOrder is present, it keeps the order without changes.
     """
     camel = {"author": "author", "author_url": "authorUrl", "name": "name", "summary": "summary",
              "description": "description", "domain_name": "domainName"}
@@ -284,7 +284,7 @@ def vortex_manifest(info: dict, mods: list[ListedMod], game: str, load_order: li
 
 
 def make_bundle(out_dir: Path) -> Path:
-    """Pack out_dir/collection.json: .7z (what Vortex produces) when 7-Zip exists, else .zip."""
+    """Pack out_dir/collection.json. Use .7z (the Vortex format) if 7-Zip is available. Otherwise use .zip."""
     seven = shutil.which("7z")
     bundle = out_dir / ("collection.7z" if seven else "collection.zip")
     for stale in ("collection.7z", "collection.zip"):
@@ -302,11 +302,11 @@ def make_bundle(out_dir: Path) -> Path:
 
 # -- collection names ------------------------------------------------------------------------------
 def known_collection_name(settings: Settings, client: NexusClient, game: str, ref: str) -> str:
-    """Name of an existing collection, from the Nexus API or from what an earlier run recorded."""
+    """The name of an existing collection, from the Nexus API or from an earlier run."""
     record = load_json(settings.state_dir / "collections.json", {})
     name = client.collection_name(game, ref) or record.get(ref, {}).get("name")
     if not name:
-        raise PipelineError(f"Could not look up the name of collection {ref!r}; pass --name once, mwpipe remembers it. "
+        raise PipelineError(f"Cannot find the name of collection {ref!r}. Use --name one time. mwpipe then remembers it. "
                             "(--collection-id takes the numeric id.)")
     log.info("collection %s is named %r", ref, name)
     return name
@@ -318,7 +318,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
                      collection_id: str | None = None, upload: bool = True,
                      output_dir: Path | None = None, allow_missing: bool = False) -> dict:
     if len(summary) > SUMMARY_LIMIT:
-        raise PipelineError(f"The summary is limited to {SUMMARY_LIMIT} characters.")
+        raise PipelineError(f"The summary can have a maximum of {SUMMARY_LIMIT} characters.")
     parsed = parse_mod_list(modlist)
     entries = parsed.entries
     game = game or next((e.game for e in entries if e.is_nexus), DEFAULT_GAME)
@@ -326,22 +326,22 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     if not name and collection_id:  # a new revision keeps the collection's own name
         name = known_collection_name(settings, client, game, collection_id)
     if not name:
-        raise PipelineError("Pass --name (or --collection-id, to reuse the name of an existing collection).")
+        raise PipelineError("Use --name (or --collection-id, to use the name of an existing collection).")
     if not NAME_LIMITS[0] <= len(name) <= NAME_LIMITS[1]:
-        raise PipelineError(f"The collection name must be {NAME_LIMITS[0]}-{NAME_LIMITS[1]} characters: {name!r}")
+        raise PipelineError(f"The collection name must have {NAME_LIMITS[0]} to {NAME_LIMITS[1]} characters: {name!r}")
     mods = resolve(client, entries, allow_missing)
     if not mods:
-        raise PipelineError("No mods left to put in the collection.")
+        raise PipelineError("No mods are left for the collection.")
 
     slug = collection_dir_name(name)
     build_dir = settings.state_dir / "builds" / slug
     out_dir = output_dir or build_dir / "out"
-    # A private pipeline: own state, openmw.cfg and ModData, so the user's real setup (including an installed
-    # ModData/<collection name> from `mwpipe run`) is never touched.
+    # A private pipeline with its own state, openmw.cfg and ModData. It does not change the real setup of the user
+    # (including a ModData/<collection name> from `mwpipe run`).
     build_dir.mkdir(parents=True, exist_ok=True)
     apply_picks(parsed.picks, mods)
     chosen = {m.override_key: {"data": m.data} for m in mods if m.data}
-    # your own overrides.json is not used
+    # the overrides.json of the user is not used
     save_json(build_dir / "overrides.json", {"disable": parsed.disabled, "plox_rules": parsed.rules, "mods": chosen})
     scratch = dataclasses.replace(settings, openmw_cfg=build_dir / "openmw.cfg", state_dir=build_dir,
                                   mods_dir=build_dir / "ModData", generated_dir=build_dir / "Generated",
@@ -364,8 +364,8 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     present = _plugins_by_name(pipe.load_cfg().data)
     for plugin in parsed.disabled:
         if plugin.lower() not in present:
-            log.warning("'- %s' matches no plugin of the listed mods (check the spelling)", plugin)
-    # The base masters stay in the exported order: a rule may place a plugin before Bloodmoon.esm.
+            log.warning("'- %s' does not match a plugin of the listed mods (check the spelling)", plugin)
+    # The base masters stay in the exported order, because a rule can put a plugin before Bloodmoon.esm.
     load_order = list(pipe.load_cfg().content)
     base = {m.lower() for m in BASE_MASTERS}
     plugin_count = sum(1 for c in load_order if c.lower() not in base)
@@ -387,7 +387,7 @@ def build_collection(settings: Settings, client: NexusClient, modlist: str, *, n
     bundle = make_bundle(out_dir)
     result = {"mods": len(mods), "plugins": plugin_count, "disabled": parsed.disabled, "bundle": str(bundle), "output_dir": str(out_dir)}
     if not upload:
-        log.info("--no-upload: nothing was sent. Files are in %s", out_dir)
+        log.info("--no-upload: mwpipe did not send anything. The files are in %s", out_dir)
         return result
 
     log.info("== upload ==")

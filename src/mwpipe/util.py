@@ -1,4 +1,4 @@
-"""Small helpers shared by all modules: logging, hashing, case-insensitive paths, JSON state."""
+"""Small helpers for all modules: logging, hashing, case-insensitive paths, JSON state."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ log = logging.getLogger("mwpipe")
 
 
 class PipelineError(RuntimeError):
-    """An error the user can act on. Printed without a traceback."""
+    """An error that the user can correct. The code shows it without a traceback."""
 
 
 def md5sum(path: Path) -> str:
@@ -25,18 +25,18 @@ def md5sum(path: Path) -> str:
 
 
 def safe_name(text: str, limit: int = 80) -> str:
-    """Turn a mod name into a portable directory name."""
+    """Change a mod name to a portable directory name."""
     cleaned = re.sub(r"[^A-Za-z0-9 ._+-]+", "_", text).strip(" ._")
     return (cleaned or "mod")[:limit]
 
 
 def norm_rel(path: str) -> str:
-    """Normalise an archive-relative path: forward slashes, no leading './' or '/'."""
+    """Normalise a path that is relative to the archive: forward slashes, no leading './' or '/'."""
     return path.replace("\\", "/").strip("/").removeprefix("./")
 
 
 def resolve_ci(base: Path, rel: str) -> Path | None:
-    """Find `rel` below `base`, ignoring case (mod archives are authored on Windows)."""
+    """Find `rel` below `base` and ignore the case (the authors make mod archives on Windows)."""
     current = base
     for part in [p for p in norm_rel(rel).split("/") if p and p != "."]:
         exact = current / part

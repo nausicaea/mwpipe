@@ -1,9 +1,9 @@
-"""Find textures that meshes refer to but no data folder or BSA provides.
+"""Find the textures that meshes use and that no data folder or BSA provides.
 
-OpenMW only logs "Failed to open image: Resource 'textures/x.dds' not found" when a mesh is first shown, and
-says nothing about which mod wanted the texture. This scans the NIF meshes that win in the data order (later
-data= entries override earlier ones) for texture names and reports every name that cannot be resolved, grouped
-by the mod the mesh comes from.
+OpenMW writes "Failed to open image: Resource 'textures/x.dds' not found" to the log only when it shows a mesh
+for the first time. The message does not show which mod needs the texture. This code scans the NIF meshes that
+have priority in the data order (later data= entries override earlier entries) for texture names. It reports
+each name that it cannot resolve. It groups the names by the mod of the mesh.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from pathlib import Path
 from mwpipe.util import log
 
 TEXTURE_EXTS = (".dds", ".tga", ".bmp", ".jpg", ".png")  # OpenMW falls back between these
-# A run of printable ASCII ending in a texture extension. NIF strings are length-prefixed, and that length
-# byte is itself printable when it is 0x20-0x7e, so `_clean` removes it again.
+# A run of printable ASCII that ends in a texture extension. NIF strings have a length prefix. The length
+# byte is printable when it is 0x20-0x7e, so `_clean` removes it.
 _REF = re.compile(rb"[\x20-\x7e]{3,260}?\.(?:dds|tga|bmp|jpg|png)(?![\x20-\x7e])", re.I)
 
 
@@ -50,7 +50,7 @@ def _clean(raw: bytes) -> str:
 
 
 def texture_refs(nif: bytes) -> set[str]:
-    """Texture names (lower case, relative to textures/, without extension) mentioned in a NIF file."""
+    """Texture names in a NIF file (lower case, relative to textures/, without extension)."""
     refs = set()
     for match in _REF.finditer(nif):
         name = os.path.splitext(_clean(match.group()))[0].rstrip(". ")
@@ -60,7 +60,7 @@ def texture_refs(nif: bytes) -> set[str]:
 
 
 def bsa_names(path: Path) -> list[str]:
-    """File names inside a Morrowind (TES3) BSA; [] if the file is not one or cannot be read."""
+    """File names in a Morrowind (TES3) BSA. Return [] if the file is not a BSA or the code cannot read it."""
     try:
         with path.open("rb") as f:
             head = f.read(12)
@@ -93,7 +93,7 @@ def _files(root: Path):
 
 
 def scan_missing_textures(data_dirs: list[Path], archives: list[Path], mods_dir: Path) -> MissingTextures:
-    """`data_dirs` in load order (later wins); `archives` are BSAs that count as texture sources."""
+    """`data_dirs` are in load order (later directories have priority). `archives` are BSAs that are texture sources."""
     available: set[str] = set()
     for archive in archives:
         for name in bsa_names(archive):
@@ -125,7 +125,7 @@ def scan_missing_textures(data_dirs: list[Path], archives: list[Path], mods_dir:
 
 
 def _mod_name(root: Path, mods_dir: Path) -> str:
-    """`<collection>/<mod>[/<sub folder>]` below ModData -> the mod's folder name; else `<parent>/<folder>`."""
+    """`<collection>/<mod>[/<sub folder>]` below ModData -> the folder name of the mod. Otherwise, use `<parent>/<folder>`."""
     try:
         parts = root.relative_to(mods_dir).parts
     except ValueError:
@@ -135,10 +135,10 @@ def _mod_name(root: Path, mods_dir: Path) -> str:
 
 def report(result: MissingTextures, out_file: Path | None = None, examples: int = 3) -> None:
     if not result.missing:
-        log.info("textures: every texture used by the %d scanned meshes was found", result.meshes)
+        log.info("textures: mwpipe found every texture that the %d scanned meshes use", result.meshes)
         return
     by_mod = result.by_mod()
-    log.warning("textures: %d textures used by meshes were not found in any data folder or BSA", len(result.missing))
+    log.warning("textures: mwpipe did not find %d textures that meshes use in any data folder or BSA", len(result.missing))
     for mod, names in sorted(by_mod.items(), key=lambda kv: -len(kv[1])):
         shown = ", ".join(names[:examples]) + (", ..." if len(names) > examples else "")
         log.warning("  %s: %d missing, e.g. %s", mod, len(names), shown)

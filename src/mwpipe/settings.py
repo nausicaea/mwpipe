@@ -1,18 +1,18 @@
-"""Runtime settings. Every path comes from a CLI flag or an environment variable; nothing is hardcoded.
+"""Runtime settings. Every path comes from a CLI flag or an environment variable. No path is hardcoded.
 
-Precedence for each value: command-line flag > environment variable > default derived from
-OPENMW_DATA_DIR / OPENMW_CONFIG_DIR. Paths are used verbatim inside openmw.cfg, so the container
-must see them at the same location as the host (compose.yaml mounts them 1:1).
+Priority for each value: command-line flag, then environment variable, then the default from
+OPENMW_DATA_DIR / OPENMW_CONFIG_DIR. The code writes the paths without changes in openmw.cfg. Because of this,
+the container must see the paths at the same location as the host (compose.yaml mounts them 1:1).
 
-OpenMW's files and mwpipe's own files are kept apart. OpenMW side (OPENMW_DATA_DIR): the base game,
-extracted mods (ModData/) and generated plugins (Generated/), because openmw.cfg points at them.
-mwpipe side, in the usual per-user locations:
+The OpenMW files and the mwpipe files are separate. OpenMW side (OPENMW_DATA_DIR): the base game,
+the extracted mods (ModData/) and the generated plugins (Generated/). openmw.cfg points to these.
+mwpipe side, in the usual locations for each user:
 
-  cache   downloads/ (archives), md5-cache.json, plox/ (mlox rules), scratch/    safe to delete
-  state   current collection, install manifest, openmw.cfg backups, builds/       delete = reinstall
-  config  overrides.json, lumenaire.toml                                          yours to edit, never written
+  cache   downloads/ (archives), md5-cache.json, plox/ (mlox rules), scratch/    you can delete it
+  state   current collection, install manifest, openmw.cfg backups, builds/       if you delete it, you must install again
+  config  overrides.json, lumenaire.toml                                          you edit it; mwpipe never writes it
 
-Outside Docker these are the per-user directories (XDG on Linux, ~/Library on macOS). In Docker the
+Outside Docker, these are the directories for each user (XDG on Linux, ~/Library on macOS). In Docker the
 image sets MWPIPE_{CACHE,STATE,CONFIG}_DIR to /cache, /state (named volumes) and /config (read-only
 files from compose.yaml's `configs:`).
 """
@@ -37,7 +37,7 @@ def env_path(name: str) -> Path | None:
 
 
 def default_dirs() -> tuple[Path, Path, Path]:
-    """(cache, state, config) directories: XDG on Linux, ~/Library on macOS (as platformdirs does)."""
+    """The (cache, state, config) directories: XDG on Linux, ~/Library on macOS (the same as platformdirs)."""
     home = Path.home()
     if sys.platform == "darwin":
         support = home / "Library" / "Application Support" / APP
@@ -74,7 +74,7 @@ class Settings:
         if cfg is None:
             cfg_dir = env_path("OPENMW_CONFIG_DIR")
             if cfg_dir is None:
-                raise PipelineError("Set OPENMW_CONFIG_DIR (or --openmw-cfg) to locate openmw.cfg.")
+                raise PipelineError("Set OPENMW_CONFIG_DIR (or --openmw-cfg) to the location of openmw.cfg.")
             cfg = cfg_dir / "openmw.cfg"
 
         morrowind_data = (args.morrowind_data or env_path("MORROWIND_DATA_FILES")
@@ -103,7 +103,7 @@ class Settings:
 
 
 def read_api_key(key_file: Path | None, from_stdin: bool) -> str:
-    """Read the Nexus API key without it ever appearing on a command line.
+    """Read the Nexus API key. The key does not appear on a command line.
 
     Order: --api-key-file / NEXUS_API_KEY_FILE, Docker secret, NEXUS_API_KEY, stdin, prompt.
     """
@@ -118,12 +118,12 @@ def read_api_key(key_file: Path | None, from_stdin: bool) -> str:
     if sys.stdin.isatty():
         return _check_key(getpass.getpass("Nexus Mods API key: ").strip())
     raise PipelineError(
-        "No Nexus API key. Provide one via a Docker secret, NEXUS_API_KEY_FILE, NEXUS_API_KEY, "
-        "--api-key-stdin, or run interactively (docker compose run -it)."
+        "No Nexus API key. Supply a key with a Docker secret, NEXUS_API_KEY_FILE, NEXUS_API_KEY "
+        "or --api-key-stdin. Alternatively, run interactively (docker compose run -it)."
     )
 
 
 def _check_key(key: str) -> str:
     if not key or any(c.isspace() for c in key):
-        raise PipelineError("The Nexus API key is empty or contains whitespace.")
+        raise PipelineError("The Nexus API key is empty or has whitespace.")
     return key

@@ -1,10 +1,10 @@
-"""Turn a downloaded archive into one or more OpenMW data directories.
+"""Change a downloaded archive to one or more OpenMW data directories.
 
-Strategy per mod, first match wins:
-  1. overrides.json "data": explicit list of archive-relative folders
-  2. FOMOD installer with the collection's recorded choices
-  3. Vortex "replicate" mode: copy exactly the files listed in `hashes`
-  4. Heuristic: the shallowest folders that look like a Data Files root
+Strategy for each mod (the first match is used):
+  1. overrides.json "data": explicit list of folders (paths relative to the archive)
+  2. FOMOD installer with the recorded choices of the collection
+  3. Vortex "replicate" mode: copy only the files in `hashes`
+  4. Heuristic: the shallowest folders that are similar to a Data Files root
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def looks_like_data_root(path: Path) -> bool:
 
 
 def find_data_roots(tree: Path) -> list[Path]:
-    """Breadth-first search; a matching folder is taken whole and not descended into."""
+    """Breadth-first search. Take a matching folder as a whole. Do not search inside it."""
     roots, queue = [], [tree]
     while queue:
         level, queue = queue, []
@@ -64,7 +64,7 @@ def install_from_hashes(tree: Path, hashes: list[dict], dest: Path) -> int:
         candidates = [p for p in index.get(Path(want).name.lower(), [])
                       if norm_rel(str(p.relative_to(tree))).lower().endswith(want.lower())]
         if not candidates:
-            log.warning("replicate: %s not found in archive", want)
+            log.warning("replicate: %s is not in the archive", want)
             continue
         src = min(candidates, key=lambda p: len(p.parts))
         target = dest / want
@@ -90,10 +90,10 @@ def _folder_hints(mod: Mod, archive_name: str, tree: Path, roots: list[Path], pi
 
 
 def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: list[str] | None = None) -> list[Path]:
-    """Install `archive` into `mod_dir`; return its data directories in load order.
+    """Install `archive` into `mod_dir`. Return its data directories in load order.
 
-    `hints`, when given, receives lines that describe the choices the archive offers (FOMOD options,
-    alternative data folders) and which of them were installed.
+    If you give `hints`, it receives lines that describe the choices of the archive (FOMOD options,
+    alternative data folders). The lines also show which choices were installed.
     """
     tree = extract(archive, scratch / "extract")
     if mod_dir.exists():
@@ -104,7 +104,7 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
             for rel in explicit:
                 found = resolve_ci(tree, rel)
                 if found is None or not found.is_dir():
-                    raise PipelineError(f"{mod.name}: override data folder {rel!r} not in archive")
+                    raise PipelineError(f"{mod.name}: override data folder {rel!r} is not in the archive")
                 roots.append(found)
             if hints is not None and len(candidates := find_data_roots(tree)) > 1:
                 hints += _folder_hints(mod, archive.name, tree, candidates, roots)
@@ -125,10 +125,10 @@ def install_mod(mod: Mod, archive: Path, mod_dir: Path, scratch: Path, hints: li
 
         roots = find_data_roots(tree)
         if not roots:
-            log.warning("%s: no Data Files layout detected, using archive root", mod.name)
+            log.warning("%s: no Data Files layout found, using the archive root", mod.name)
             roots = [tree]
         if len(roots) > 1:
-            log.warning("%s: %d candidate data folders, adding all: %s (pin with overrides 'data')",
+            log.warning("%s: %d candidate data folders, adding all of them: %s (to select one, use 'data' in the overrides)",
                         mod.name, len(roots), ", ".join(str(r.relative_to(tree)) for r in roots))
         if hints is not None and len(roots) > 1:
             hints += _folder_hints(mod, archive.name, tree, roots, roots)
@@ -152,10 +152,10 @@ def _move_roots(roots: list[Path], mod_dir: Path) -> list[Path]:
 
 
 def prune_to_plugins(roots: list[Path]) -> None:
-    """Keep only the plugin files that sit directly in each data folder; everything else is deleted.
+    """Keep only the plugin files that are directly in each data folder. Delete everything else.
 
-    `build-collection` needs the plugins (names, masters) to sort them, never the textures, meshes or sounds.
-    The folders themselves stay, because the install manifest checks that they exist.
+    `build-collection` needs the plugins (names, masters) to sort them. It does not need the textures, meshes or sounds.
+    The folders stay, because the install manifest checks that they exist.
     """
     for root in roots:
         if not root.is_dir():
@@ -168,10 +168,10 @@ def prune_to_plugins(roots: list[Path]) -> None:
 
 
 def lowercase_textures(root: Path) -> None:
-    """Rename *.DDS -> *.dds (the old lowercase-dds-files.sh); helps tools that are case-sensitive.
+    """Rename *.DDS to *.dds (the old lowercase-dds-files.sh). This helps the tools that are case-sensitive.
 
-    Only the extension changes; the rest of the name stays as the mod author wrote it. A file is never
-    overwritten: if the lower-case name is already taken by another file, both are kept and a warning is logged.
+    Only the extension changes. The rest of the name stays as the mod author wrote it. The code never
+    overwrites a file. If another file has the lower-case name, the code keeps both files and writes a warning.
     """
     for dirpath, _, files in os.walk(root):
         for name in files:
@@ -179,6 +179,6 @@ def lowercase_textures(root: Path) -> None:
             if ext.lower() == ".dds" and ext != ".dds":
                 target = Path(dirpath, stem + ".dds")
                 if target.exists() and not target.samefile(Path(dirpath, name)):
-                    log.warning("not renaming %s: %s already exists", Path(dirpath, name), target.name)
+                    log.warning("not renaming %s: %s exists already", Path(dirpath, name), target.name)
                     continue
                 os.replace(Path(dirpath, name), target)

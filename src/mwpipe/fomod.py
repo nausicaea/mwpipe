@@ -1,7 +1,7 @@
-"""A small FOMOD (fomod/ModuleConfig.xml) interpreter that replays a collection author's choices.
+"""A small FOMOD (fomod/ModuleConfig.xml) interpreter. It applies the choices of the collection author again.
 
-Vortex records choices as: [{name: step, groups: [{name: group, choices: [{name, idx}]}]}].
-Groups without recorded choices fall back to the installer defaults (Required/Recommended).
+Vortex records the choices in this format: [{name: step, groups: [{name: group, choices: [{name, idx}]}]}].
+A group with no recorded choices uses the installer defaults (Required/Recommended).
 Supported: requiredInstallFiles, installSteps with visibility, plugin types, condition flags and
 conditionalFileInstalls. Not supported (rare for Morrowind): script-based installers.
 """
@@ -147,13 +147,13 @@ class FomodInstaller:
         for s in self.choices:
             for g in s.get("groups", []):
                 if (s.get("name"), g.get("name")) not in self._used:
-                    log.warning("FOMOD: no step %r with group %r (hidden or misspelled); choices ignored",
+                    log.warning("FOMOD: no step %r with group %r (hidden or misspelled); mwpipe ignores the choices",
                                 s.get("name"), g.get("name"))
         return self.planned
 
     def install(self, dest: Path) -> None:
         dest.mkdir(parents=True, exist_ok=True)
-        # Lower priority first so higher priority files overwrite; stable for equal priority.
+        # Lower priority first, so that files with higher priority overwrite them. The sort is stable for equal priority.
         for item in sorted(self.plan(), key=lambda i: i.priority):
             src = resolve_ci(self.base, item.source) if item.source else self.base
             if src is None:
@@ -166,4 +166,4 @@ class FomodInstaller:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, target)
         if not any(dest.iterdir()):
-            raise PipelineError("FOMOD installer produced no files; check the recorded choices.")
+            raise PipelineError("The FOMOD installer produced no files. Examine the recorded choices.")

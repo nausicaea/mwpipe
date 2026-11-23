@@ -1,22 +1,23 @@
-"""Parse a mod list: one URL per line, `#` starts a comment.
+"""Parse a mod list: one URL on each line. A `#` starts a comment.
 
   https://www.nexusmods.com/morrowind/mods/43931                     newest primary file
   https://www.nexusmods.com/morrowind/mods/43931?tab=files&file_id=1  that exact file
   nxm://morrowind/mods/43931/files/1                                  same, as an nxm link
   https://gitlab.com/group/project/-/package_files/1/download         any other HTTPS file ("direct")
   + <mod url> | 00 Core                                                install only this archive folder of that mod
-  + <mod url> | Step > Group > Option                                  choose this option in that mod's FOMOD installer
-  - k_weather (louder sounds).esp                                    leave this plugin out of the load order
-  ! Distant_Seafloor_2.00.esm < Bloodmoon.esm                        load the first plugin before the second (plox rule)
+  + <mod url> | Step > Group > Option                                  select this option in the FOMOD installer of that mod
+  - k_weather (louder sounds).esp                                    remove this plugin from the load order
+  ! Distant_Seafloor_2.00.esm < Bloodmoon.esm                        load the first plugin before the second plugin (plox rule)
 
-A plain mod URL takes the mod's primary file. A mod with several files (for example separate textures and meshes) needs
-one `?file_id=` line per wanted file, in the order they should load; `build-collection` logs a hint when a line without
-file_id leaves other current files of the mod unused.
+A plain mod URL uses the primary file of the mod. If a mod has more than one file (for example, separate textures
+and meshes), add one `?file_id=` line for each file that you want. Put the lines in load order.
+`build-collection` writes a hint to the log if a line has no file_id and the mod has other current files.
 
-A mod that ships either/or plugins would otherwise enable all of them, which plox reports as a [CONFLICT].
-A mod that ships alternative data folders ("00 Core", "02 Vanilla style", ...) would otherwise be installed
-with all of them; one `+ url | folder` line per folder picks the ones to keep (archive-relative path).
-A `+` line names its mod by URL (the file id is optional), so these lines can go anywhere in the list.
+If a mod has either/or plugins, mwpipe enables all of them. plox reports this as a [CONFLICT].
+Use a `-` line to prevent this.
+If a mod has alternative data folders ("00 Core", "02 Vanilla style", ...), mwpipe installs all of them.
+Add one `+ url | folder` line for each folder that you want to keep (a path relative to the archive).
+A `+` line gives the mod by URL (the file ID is optional). You can put these lines anywhere in the list.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ class Pick:
     option: tuple | None = None   # (step, group, option)
 
     def applies_to(self, game, mod_id, file_id, url=None) -> bool:
-        """Does this pick name the mod (and, if the line gave one, the file) with these ids?"""
+        """Return True if this pick names the mod (and the file, if the line has a file ID) with these IDs."""
         if not self.ref.is_nexus:
             return url == self.ref.url
         return (game, mod_id) == (self.ref.game, self.ref.mod_id) and self.ref.file_id in (None, file_id)
@@ -67,7 +68,7 @@ class ModEntry:
 
     @property
     def ident(self):
-        """What makes two list lines the same mod."""
+        """The values that show that two list lines are the same mod."""
         return (self.game, self.mod_id, self.file_id) if self.is_nexus else self.url
 
 
@@ -80,18 +81,18 @@ def parse_entry(line: str) -> ModEntry:
     if parts.scheme in ("http", "https") and host in ("nexusmods.com", "www.nexusmods.com"):
         if m := NEXUS_MOD.match(parts.path):
             return ModEntry(url, m["game"].lower(), int(m["mod"]), file_id)
-        raise PipelineError(f"not a Nexus mod page: {url}")
+        raise PipelineError(f"this is not a Nexus mod page: {url}")
     if parts.scheme == "nxm":
         if m := NXM_MOD.match(parts.path):
             return ModEntry(url, host, int(m["mod"]), int(m["file"]) if m["file"] else file_id)
-        raise PipelineError(f"not an nxm mod link: {url}")
+        raise PipelineError(f"this is not an nxm mod link: {url}")
     if parts.scheme == "https" and host:
         return ModEntry(url)
-    raise PipelineError(f"unsupported URL (need https:// or nxm://): {url}")
+    raise PipelineError(f"unsupported URL (use https:// or nxm://): {url}")
 
 
 def parse_mod_list(text: str) -> ModList:
-    """All entries in order. Duplicates are dropped with a warning; bad lines are all reported at once."""
+    """Return all entries in order. Remove duplicates with a warning. Report all bad lines together."""
     entries: list[ModEntry] = []
     disabled: list[str] = []
     rules: list[str] = []
@@ -159,5 +160,5 @@ def parse_mod_list(text: str) -> ModList:
         raise PipelineError("The mod list contains no URLs.")
     games = {e.game for e in entries if e.is_nexus}
     if len(games) > 1:
-        raise PipelineError(f"A collection belongs to one game, but the list mixes: {', '.join(sorted(games))}")
+        raise PipelineError(f"A collection belongs to one game, but the list has more than one game: {', '.join(sorted(games))}")
     return ModList(entries, disabled, rules, parsed_picks)

@@ -1,8 +1,8 @@
-"""Wrappers around the external tools baked into the image.
+"""Wrappers for the external tools in the image.
 
-All tools read the same openmw.cfg: OPENMW_CONFIG is exported for every tool and the path is also
-passed explicitly where a flag exists. Tool locations can be overridden with environment
-variables (PLOX_BIN, DELTA_PLUGIN_BIN, ...) for use outside the container.
+All tools read the same openmw.cfg. The code exports OPENMW_CONFIG for every tool. It also gives the path
+to a tool if the tool has a flag for it. To set the location of a tool outside the container, use environment
+variables (PLOX_BIN, DELTA_PLUGIN_BIN, ...).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ GENERATED_CONTENT = (DELTA_OUTPUT, GROUNDCOVER_DELETED, LIGHTS_OUTPUT)
 
 def run(cmd: list[str], cfg: Path, cwd: Path, dry_run: bool = False) -> None:
     if shutil.which(cmd[0]) is None:
-        raise PipelineError(f"{cmd[0]} is not installed (are you running inside the container?)")
+        raise PipelineError(f"{cmd[0]} is not installed (do you run mwpipe inside the container?)")
     log.info("$ %s", " ".join(cmd))
     if dry_run:
         return
@@ -43,7 +43,7 @@ def run(cmd: list[str], cfg: Path, cwd: Path, dry_run: bool = False) -> None:
 
 
 def _extra(var: str) -> list[str]:
-    """Extra flags from an environment variable, e.g. LUMENAIRE_ARGS="--negative-lights preserve"."""
+    """Extra flags from an environment variable, for example LUMENAIRE_ARGS="--negative-lights preserve"."""
     return shlex.split(os.environ.get(var, ""))
 
 
@@ -51,7 +51,7 @@ PLOX_USER_RULES = "mlox_my_rules.txt"  # read by plox next to the downloaded mlo
 
 
 def plox_sort(cfg: Path, work_dir: Path, dry_run: bool, rules: list[str] = ()) -> None:
-    # plox downloads the mlox rules into ./mlox, so run it from a persistent (cache) directory.
+    # plox downloads the mlox rules into ./mlox. Run it from a persistent (cache) directory.
     if not dry_run:
         work_dir.mkdir(parents=True, exist_ok=True)
         rules_file = work_dir / "mlox" / PLOX_USER_RULES
@@ -71,13 +71,13 @@ def delta_merge(cfg: Path, out_dir: Path, skip: list[str], dry_run: bool) -> Non
 
 
 def gocoverify(cfg: Path, out_dir: Path, dry_run: bool) -> None:
-    """Static grass -> OpenMW groundcover. Writes both plugins and a meshes/ folder to out_dir."""
+    """Change static grass to OpenMW groundcover. Write both plugins and a meshes/ folder to out_dir."""
     run([BIN["gocoverify"], "--openmw-config", str(cfg), "--output-dir", str(out_dir),
          *_extra("GOCOVERIFY_ARGS")], cfg, out_dir, dry_run)
 
 
 def lumenaire(cfg: Path, out_dir: Path, settings: Path, enlightened_flames: bool, dry_run: bool) -> None:
-    """Light fixes (Go port of waza_lightfixes). Writes Lumenaire.omwaddon (+ Meshes/ with -ef)."""
+    """Light fixes (Go port of waza_lightfixes). Write Lumenaire.omwaddon (and Meshes/ with -ef)."""
     cmd = [BIN["lumenaire"], "--config", str(settings), "--openmw-config", str(cfg),
            "--output-dir", str(out_dir)]
     if enlightened_flames:
@@ -87,11 +87,11 @@ def lumenaire(cfg: Path, out_dir: Path, settings: Path, enlightened_flames: bool
 
 def tes3cmd_clean(plugins: list[Path], all_plugins: list[Path], workspace: Path,
                   backup_dir: Path, dry_run: bool) -> list[Path]:
-    """Clean plugins in place with `tes3cmd clean`; originals go to `backup_dir`.
+    """Clean the plugins in place with `tes3cmd clean`. The originals go to `backup_dir`.
 
-    tes3cmd only finds masters inside a "Data Files" folder next to a Morrowind.ini, so a fake
-    Morrowind install is assembled from symlinks in `workspace` (which also keeps its cache).
-    Returns the plugins that were changed.
+    tes3cmd finds masters only in a "Data Files" folder next to a Morrowind.ini. Because of this, the code
+    makes a fake Morrowind install from symlinks in `workspace` (which also keeps its cache).
+    Return the plugins that changed.
     """
     data_files = workspace / "Data Files"
     shutil.rmtree(data_files, ignore_errors=True)

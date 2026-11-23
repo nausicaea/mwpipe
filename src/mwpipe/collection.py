@@ -1,13 +1,13 @@
-"""The collection manifest (collection.json, as written by Vortex) and mod ordering.
+"""The collection manifest (collection.json, as Vortex writes it) and the mod order.
 
-Relevant collection.json fields:
+These collection.json fields are important:
   mods[]       name, version, optional, source{type, modId, fileId, md5, logicalFilename,
                fileExpression, url, instructions}, choices (FOMOD), hashes (replicate mode), phase
-  modRules[]   {source, type: before|after|..., reference}: decides which mod's files win
-  loadOrder[]  Morrowind plugin order exported by Vortex: [{id, name, enabled}]
+  modRules[]   {source, type: before|after|..., reference}: sets which files have priority
+  loadOrder[]  Morrowind plugin order that Vortex exports: [{id, name, enabled}]
 
-The Nexus v3 OpenAPI spec documents the upload-side manifest with snake_case source keys
-(mod_id, file_id, logical_filename, ...) where Vortex writes camelCase, so both are accepted.
+The Nexus v3 OpenAPI specification describes the upload manifest with snake_case source keys
+(mod_id, file_id, logical_filename, ...). Vortex writes camelCase keys. The code accepts both.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from mwpipe.util import load_json, log, safe_name
 
 
 def normalize_source(source: dict) -> dict:
-    """Return `source` with snake_case keys (file_id) converted to camelCase (fileId)."""
+    """Return `source` with its snake_case keys (file_id) changed to camelCase (fileId)."""
     def camel(key: str) -> str:
         head, *rest = key.split("_")
         return head + "".join(part.capitalize() for part in rest)
@@ -43,7 +43,7 @@ class Mod:
 
     @property
     def list_url(self) -> str:
-        """The mod as it is written in a build-collection mod list."""
+        """The mod as a build-collection mod list shows it."""
         if self.source.get("type") == "nexus":
             url = f"https://www.nexusmods.com/{self.domain}/mods/{self.source.get('modId')}"
             return f"{url}?tab=files&file_id={self.source['fileId']}" if self.source.get("fileId") else url
@@ -61,7 +61,7 @@ class Mod:
         return f"{self.index:03d} {safe_name(self.name)}"
 
     def matches(self, ref: dict) -> bool:
-        """Does a Vortex IModReference point at this mod?"""
+        """Return True if a Vortex IModReference points to this mod."""
         s = self.source
         repo = ref.get("repo") or {}
         if repo.get("fileId") and str(repo["fileId"]) == str(s.get("fileId")):
@@ -106,10 +106,10 @@ class Collection:
                    rules=raw.get("modRules", []), load_order=raw.get("loadOrder", []))
 
     def data_order(self) -> list[Mod]:
-        """Order mods so that later entries override earlier ones (OpenMW data= semantics).
+        """Order the mods so that later entries override earlier entries (OpenMW data= semantics).
 
-        Starts from (phase, collection index) and applies before/after rules with a stable
-        topological sort. Cycles are reported and broken by falling back to the base order.
+        Start from (phase, collection index). Apply the before/after rules with a stable
+        topological sort. Report each cycle and break it with the base order.
         """
         after: dict[int, set[int]] = {m.index: set() for m in self.mods}  # node -> must come after these
         by_ref = lambda ref: [m.index for m in self.mods if m.matches(ref)]  # noqa: E731
@@ -143,16 +143,16 @@ class Collection:
                     heapq.heappush(ready, rank[j] + (j,))
         if len(ordered) < len(mods):
             stuck = sorted(set(mods) - set(ordered), key=rank.get)
-            log.warning("cyclic mod rules between: %s", ", ".join(mods[i].name for i in stuck))
+            log.warning("cyclic mod rules in these mods: %s", ", ".join(mods[i].name for i in stuck))
             ordered += stuck
         return [mods[i] for i in ordered]
 
     def disabled_plugins(self) -> set[str]:
-        """Lower-cased names the author listed as disabled (e.g. either/or plugins of one mod)."""
+        """Lower-case names of the plugins that the author disabled (for example, either/or plugins of one mod)."""
         return {(e.get("name") or e.get("id") or "").lower() for e in self.load_order if not e.get("enabled", True)}
 
     def plugin_order(self) -> list[str] | None:
-        """Enabled plugins in the author's order, or None if the collection has no load order."""
+        """Enabled plugins in the order of the author, or None if the collection has no load order."""
         if not self.load_order:
             return None
         return [e.get("name") or e.get("id") for e in self.load_order if e.get("enabled", True)]
