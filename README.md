@@ -329,8 +329,20 @@ packages are not pinned on purpose. The digest of the base image changes them.
 - It builds for linux/amd64 and linux/arm64.
 - On a push to `main` and on `vX.Y.Z` tags, it publishes a multi-arch image to
   `ghcr.io/<owner>/<repo>` with provenance attestation.
+- On `vX.Y.Z` tags, it signs the image with [cosign](https://github.com/sigstore/cosign)
+  (keyless, Sigstore). Images from `main` are not signed.
 
 A pull request only builds the image.
+
+To verify the signature of a release image, use this command:
+
+```sh
+cosign verify ghcr.io/<owner>/mwpipe:X.Y.Z \
+  --certificate-identity https://github.com/<owner>/mwpipe/.github/workflows/docker.yml@refs/tags/vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+To verify the provenance attestation, use `gh attestation verify oci://ghcr.io/<owner>/mwpipe:X.Y.Z --repo <owner>/mwpipe`.
 
 ## License
 
