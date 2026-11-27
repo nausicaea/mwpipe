@@ -154,7 +154,10 @@ class Pipeline:
         return next((p for p in self._archives().values() if p.name.lower() == name), None) if name else None
 
     def load_cfg(self) -> OpenMWConfig:
-        return OpenMWConfig.load(self.s.openmw_cfg)
+        cfg = OpenMWConfig.load(self.s.openmw_cfg)
+        if count := cfg.resolve_userdata(self.s.data_dir):
+            log.info("openmw.cfg: replaced ?userdata? in %d paths (some tools cannot read it)", count)
+        return cfg
 
     def save_cfg(self, cfg: OpenMWConfig) -> None:
         if self.s.dry_run:

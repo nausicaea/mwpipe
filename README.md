@@ -243,6 +243,10 @@ mwpipe keeps all lines that it does not manage. It manages `data=`, `fallback-ar
 writes the file, it makes a backup with a timestamp. If there are no `fallback=` lines, mwpipe
 imports them from `Morrowind.ini`. This is the same as `openmw-iniimporter`.
 
+GOCoverify cannot read the OpenMW path token `?userdata?`. Thus mwpipe replaces this token in
+`data=`, `data-local=` and `config=` with an absolute path. This path is the `user-data=` value of
+`openmw.cfg`, or `OPENMW_DATA_DIR` if there is no `user-data=` line.
+
 ## Troubleshooting
 
 | Message or symptom | Cause | Action |
@@ -257,6 +261,7 @@ imports them from `Morrowind.ini`. This is the same as `openmw-iniimporter`.
 | `Archive entry leaves the extraction directory` | An archive tries to write outside its folder. | Do not use this archive. mwpipe stopped the install on purpose. |
 | `The FOMOD installer produced no files` | The recorded choices select no files. | Examine the choices. For `build-collection`, add `+` lines. |
 | `plox_rules ignored` | `--sort auto` keeps the load order of the collection. | Use `--sort plox` to apply the rules. |
+| `unsupported OpenMW path token in "?userdata?..."` | GOCoverify cannot read the token, and the mwpipe version is older than this fix. | Update mwpipe. Alternatively, replace `?userdata?` in `openmw.cfg` with the absolute path of the OpenMW user data directory. |
 | `delta_plugin` runs out of memory | The merge needs much memory. | Set `RAYON_NUM_THREADS=1`. |
 
 To see more detail, add `-v` before the command, for example `./mwpipe.sh -v run`.
