@@ -5,8 +5,8 @@ Everything runs in Docker. The host needs Docker only.
 
 > [!NOTE]
 > **Claude wrote this project almost entirely.** Claude is an AI model from Anthropic. Claude wrote
-> almost all of the code, the tests, the Docker files and the documentation in Claude Code sessions. A human
-> gave the requirements, examined the results and merged the changes.
+> almost all of the code, the tests, the Docker files and the documentation in Claude Code
+> sessions. A human gave the requirements, examined the results and merged the changes.
 >
 > - Model: Claude Opus 5.5 (`claude-opus-5-5`), through Claude Code
 > - Development time: 2026-11-20 to 2026-11-27
