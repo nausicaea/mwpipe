@@ -1,3 +1,9 @@
+## v1.3.0 (2026-11-27)
+
+### Feat
+
+- **docker**: sign release images with cosign (#30)
+
 ## v1.2.0 (2026-11-27)
 
 ### Feat
