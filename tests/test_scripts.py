@@ -11,7 +11,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FAKE_DOCKER = '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_LOG"\nprintf "PUID=%s PGID=%s\\n" "$PUID" "$PGID" >> "$FAKE_LOG"\n'
+# `docker info` writes $FAKE_INFO (the runtime type); other commands are logged with the IDs.
+FAKE_DOCKER = ('#!/bin/sh\n[ "$1" = info ] && { printf "%s\\n" "${FAKE_INFO:-}"; exit 0; }\n'
+               'printf "%s\\n" "$*" >> "$FAKE_LOG"\nprintf "PUID=%s PGID=%s\\n" "$PUID" "$PGID" >> "$FAKE_LOG"\n')
 
 
 class TestWrapperScript(unittest.TestCase):
@@ -69,6 +71,23 @@ class TestWrapperScript(unittest.TestCase):
         self.assertEqual(self.run_script("run", "--dry-run", "a b").returncode, 0)
         self.assertEqual(self.calls(), ["compose run --rm -T --build mwpipe run --dry-run a b"])
         self.assertIn(f"PUID={os.getuid()} PGID={os.getgid()}", self.log.read_text())
+
+    def test_rootless_docker_uses_container_root(self):
+        (self.project / ".env").write_text("")
+        info = '["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]'
+        self.assertEqual(self.run_script("run", env={"FAKE_INFO": info}).returncode, 0)
+        self.assertIn("PUID=0 PGID=0", self.log.read_text())
+
+    def test_rootless_podman_uses_container_root(self):
+        (self.project / ".env").write_text("")
+        self.assertEqual(self.run_script("run", env={"FAKE_INFO": "true"}).returncode, 0)
+        self.assertIn("PUID=0 PGID=0", self.log.read_text())
+
+    def test_ids_from_the_environment_are_kept(self):
+        (self.project / ".env").write_text("")
+        env = {"FAKE_INFO": "true", "PUID": "1234", "PGID": "5678"}
+        self.assertEqual(self.run_script("run", env=env).returncode, 0)
+        self.assertIn("PUID=1234 PGID=5678", self.log.read_text())
 
     def test_published_image_is_pulled_and_not_built(self):
         (self.project / ".env").write_text("")
