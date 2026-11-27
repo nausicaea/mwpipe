@@ -78,6 +78,10 @@ class OpenMWConfig:
             cfg.other.pop()
         return cfg
 
+    def is_global(self) -> bool:
+        """True if this is the global openmw.cfg that OpenMW installs. The user must not change that file."""
+        return any(line.lstrip("# ").startswith("This is the global openmw.cfg file") for line in self.other)
+
     # -- path tokens -------------------------------------------------------------------------
     def resolve_userdata(self, default: Path) -> int:
         """Replace the OpenMW token ?userdata? in data=, data-local= and config= with an absolute path.

@@ -174,6 +174,12 @@ class TestOrdering(TempDir):
         self.assertEqual(sorted(order), ["A", "B", "C"])
 
 
+class TestGlobalConfig(unittest.TestCase):
+    def test_is_global(self):
+        self.assertTrue(OpenMWConfig(other=["# This is the global openmw.cfg file. Do not modify!"]).is_global())
+        self.assertFalse(OpenMWConfig(other=["encoding=win1252"]).is_global())
+
+
 class TestPipeline(TempDir):
     """End to end from a collection.json + archives to openmw.cfg, then post-processing."""
 
@@ -189,7 +195,10 @@ class TestPipeline(TempDir):
         s.ensure_dirs()
         for name in ("Morrowind.esm", "Tribunal.esm", "Morrowind.bsa"):
             touch(s.morrowind_data / name)
-        touch(s.morrowind_data.parent / "Morrowind.ini", b"[General]\nWerewolf FOV=100\n")
+        touch(s.morrowind_data.parent / "Morrowind.ini",
+              b"[General]\nWerewolf FOV=100\n[FontColor]\ncolor_normal=202,165,96\n[LightAttenuation]\nUseConstant=1\n")
+        # Like the global openmw.cfg of OpenMW: some fallback= values, but none from Morrowind.ini.
+        touch(s.openmw_cfg, b"encoding=win1252\nfallback=LightAttenuation_UseConstant,0\n")
         touch(s.openmw_cfg.parent / "settings.cfg", b"[Groundcover]\nenabled = true\n")
 
         archive = s.downloads_dir / "ModA.zip"
@@ -219,7 +228,9 @@ class TestPipeline(TempDir):
         self.assertEqual(cfg.data[0], s.morrowind_data)
         self.assertTrue(any(d.is_relative_to(s.mods_dir / "test") for d in cfg.data), "mods go under the name slug")
         self.assertEqual(cfg.data[-1], s.generated_dir)
-        self.assertEqual(cfg.fallbacks, {"General_Werewolf_FOV": "100"})
+        # The missing Morrowind.ini values are added. The values in openmw.cfg stay.
+        self.assertEqual(cfg.fallbacks, {"LightAttenuation_UseConstant": "0", "General_Werewolf_FOV": "100",
+                                         "FontColor_color_normal": "202,165,96"})
 
         # Post-processing with fake tools that create the expected outputs.
         def fake_run(cmd, cfg_path, cwd, dry_run=False):
