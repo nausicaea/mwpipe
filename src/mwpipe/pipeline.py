@@ -155,6 +155,10 @@ class Pipeline:
 
     def load_cfg(self) -> OpenMWConfig:
         cfg = OpenMWConfig.load(self.s.openmw_cfg)
+        if cfg.is_global():
+            log.warning("%s is the global openmw.cfg of OpenMW. Set OPENMW_CONFIG_DIR to the directory of the "
+                        "user openmw.cfg (for example ~/.config/openmw). OpenMW reads both files, so data= and "
+                        "content= values in both files can cause problems.", self.s.openmw_cfg)
         if count := cfg.resolve_userdata(self.s.data_dir):
             log.info("openmw.cfg: replaced ?userdata? in %d paths (some tools cannot read it)", count)
         return cfg
@@ -316,13 +320,21 @@ class Pipeline:
         cfg.content = _drop_missing_masters(dedupe(content), available)
         cfg.groundcover = [available[g].name for g in groundcover if g in available]
 
-        if not cfg.fallbacks:
-            if self.s.morrowind_ini.is_file():
-                for name, value in import_ini_fallbacks(self.s.morrowind_ini):
+        # The global openmw.cfg of OpenMW has some fallback= values (lighting, inventory, water), but not the
+        # values of Morrowind.ini (fonts, weather, ...). Thus add each Morrowind.ini value that is missing, and
+        # keep the values that are in openmw.cfg. Without FontColor_* values, the OpenMW Lua UI does not start.
+        existing = cfg.fallbacks
+        if self.s.morrowind_ini.is_file():
+            added = 0
+            for name, value in import_ini_fallbacks(self.s.morrowind_ini):
+                if name not in existing:
                     cfg.set_fallback(name, value)
-            else:
-                log.warning("openmw.cfg has no fallback= values and %s was not found; "
-                            "OpenMW will not start without them", self.s.morrowind_ini)
+                    added += 1
+            if added:
+                log.info("openmw.cfg: added %d fallback= values from %s", added, self.s.morrowind_ini)
+        elif not any(name.startswith("FontColor_") for name in existing):
+            log.warning("openmw.cfg has no fallback= values from Morrowind.ini and %s was not found; "
+                        "OpenMW and its Lua scripts will not work correctly without them", self.s.morrowind_ini)
         for name, value in ov.get("fallback", {}).items():
             cfg.set_fallback(name, value)
         self.save_cfg(cfg)
