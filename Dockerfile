@@ -54,6 +54,15 @@ FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15d
 # break builds within weeks. The base image digest (Renovate) is what moves them forward.
 RUN apk add --no-cache perl 7zip libarchive-tools
 
+# OCI image labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md).
+# The labels that change with each build (version, revision, created) are at the end of this file.
+LABEL org.opencontainers.image.title="mwpipe" \
+      org.opencontainers.image.description="Install a Nexus Mods collection for OpenMW and run delta_plugin, GOCoverify and Lumenaire." \
+      org.opencontainers.image.url="https://github.com/nausicaea/mwpipe" \
+      org.opencontainers.image.source="https://github.com/nausicaea/mwpipe" \
+      org.opencontainers.image.documentation="https://github.com/nausicaea/mwpipe#readme" \
+      org.opencontainers.image.licenses="Unlicense"
+
 COPY --from=rust-tools /usr/local/cargo/bin/delta_plugin /usr/local/cargo/bin/plox /usr/local/bin/
 COPY --from=go-tools /out/gocoverify /out/lumenaire /usr/local/bin/
 COPY --from=tes3cmd --chmod=0755 /tes3cmd /usr/local/bin/tes3cmd
@@ -75,3 +84,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp \
     MWPIPE_CACHE_DIR=/cache MWPIPE_STATE_DIR=/state MWPIPE_CONFIG_DIR=/config
 ENTRYPOINT ["mwpipe"]
 CMD ["--help"]
+
+# Build-specific OCI labels. They are last, so that a new value does not invalidate the layer cache.
+# .github/workflows/docker.yml sets them; a local build gets the defaults.
+ARG OCI_VERSION=dev
+ARG OCI_REVISION=""
+ARG OCI_CREATED=""
+LABEL org.opencontainers.image.version="$OCI_VERSION" \
+      org.opencontainers.image.revision="$OCI_REVISION" \
+      org.opencontainers.image.created="$OCI_CREATED"
