@@ -1,3 +1,9 @@
+## v1.3.1 (2026-11-27)
+
+### Fix
+
+- **docker**: use container root with a rootless runtime (#31)
+
 ## v1.3.0 (2026-11-27)
 
 ### Feat
