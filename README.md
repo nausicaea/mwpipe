@@ -165,7 +165,10 @@ only to `api.nexusmods.com`.
 
 The container has these security limits:
 
-- It runs as your user.
+- It runs as your user. With rootful Docker, `mwpipe.sh` uses your UID and GID. With rootless
+  Docker or rootless Podman, it uses container UID 0, because that UID is your host user (all
+  other container UIDs are subordinate IDs from `/etc/subuid`). To use different IDs, set `PUID`
+  and `PGID` in the environment.
 - Its root filesystem is read-only.
 - It has no capabilities.
 - Only the mounted folders are writable.

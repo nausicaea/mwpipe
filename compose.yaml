@@ -10,6 +10,7 @@ services:
     build: .
     # Set MWPIPE_IMAGE=ghcr.io/<owner>/mwpipe:<tag> to use the published image instead of building locally.
     image: ${MWPIPE_IMAGE:-mwpipe:local}
+    # mwpipe.sh sets these: your UID/GID, or 0:0 with a rootless runtime (container root = your host user).
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       OPENMW_DATA_DIR: ${OPENMW_DATA_DIR:?set OPENMW_DATA_DIR in .env}
