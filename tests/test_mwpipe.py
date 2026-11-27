@@ -67,6 +67,23 @@ class TestConfig(TempDir):
         self.assertNotIn("Old.esp", text)
         self.assertEqual(OpenMWConfig.load(cfg_path).render(), text)  # stable on reload
 
+    def test_userdata_token_is_replaced(self):
+        cfg_path = touch(self.tmp / "openmw.cfg", b'encoding=win1252\ndata-local="?userdata?data"\n'
+                         b'config=?userdata?/extra\ndata="?userdata?data"\ndata="?local?x"\n')
+        cfg = OpenMWConfig.load(cfg_path)
+        self.assertEqual(cfg.resolve_userdata(Path("/u d")), 3)
+        self.assertEqual(cfg.data, [Path("/u d/data"), Path("?local?x")])  # the tools read ?local?
+        self.assertIn('data-local="/u d/data"', cfg.other)
+        self.assertIn('config="/u d/extra"', cfg.other)
+        self.assertNotIn("?userdata?", cfg.render())
+        self.assertEqual(cfg.resolve_userdata(Path("/u d")), 0)
+
+    def test_user_data_setting_has_priority_for_the_userdata_token(self):
+        cfg_path = touch(self.tmp / "openmw.cfg", b'user-data="/mine"\ndata="?userdata?data"\n')
+        cfg = OpenMWConfig.load(cfg_path)
+        cfg.resolve_userdata(Path("/default"))
+        self.assertEqual(cfg.data, [Path("/mine/data")])
+
     def test_ini_import(self):
         ini = touch(self.tmp / "Morrowind.ini", b"[Weather Thunderstorm]\nThunder Sound ID 0=Thunder0\n"
                     b"[General]\nWerewolf FOV=100 ; comment\nMax FPS=240\n[Level Up]\nLevel2=Hi\n")
@@ -310,6 +327,21 @@ class TestPloxRules(TempDir):
             Pipeline(s, sort_mode="plox").sort()
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][3], ["[Order]\na.esm\nb.esm"])
+
+    def test_groundcover_tool_gets_no_userdata_token(self):
+        s = self.settings()
+        s.ensure_dirs()
+        touch(s.openmw_cfg, b'data-local="?userdata?data"\ndata="?userdata?data"\n')
+        seen = []
+
+        def fake_run(cmd, cfg_path, cwd, dry_run=False):
+            seen.append(cfg_path.read_text())
+            for out in (tools.GROUNDCOVER_DELETED, tools.GROUNDCOVER_PLUGIN):
+                touch(s.generated_dir / out)
+        with mock.patch.object(tools, "run", side_effect=fake_run):
+            Pipeline(s).run(["groundcover"], None)
+        self.assertNotIn("?userdata?", seen[0])
+        self.assertIn(f'data-local={quote(s.data_dir / "data")}', seen[0])
 
     def test_collection_order_before_base_master_is_kept(self):
         s = self.settings()

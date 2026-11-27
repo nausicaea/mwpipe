@@ -17,6 +17,7 @@ from mwpipe.util import PipelineError, log
 MANAGED = ("fallback-archive", "data", "content", "groundcover")
 # Characters that end a line for str.splitlines(), and NUL. A file name with one of them can add lines to openmw.cfg.
 LINE_BREAKS = frozenset("\0\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029")
+USERDATA = "?userdata?"  # OpenMW path token for the user data directory
 MARKER = "# ---- managed by mwpipe: edits to data/content/groundcover/fallback-archive below are overwritten ----"
 
 
@@ -76,6 +77,35 @@ class OpenMWConfig:
         while cfg.other and not cfg.other[-1].strip():
             cfg.other.pop()
         return cfg
+
+    # -- path tokens -------------------------------------------------------------------------
+    def resolve_userdata(self, default: Path) -> int:
+        """Replace the OpenMW token ?userdata? in data=, data-local= and config= with an absolute path.
+
+        Some tools (GOCoverify 1.1) stop at this token. The user-data= value of this file has priority,
+        then `default` (OPENMW_DATA_DIR, which is the OpenMW user data directory). Return the number of
+        values that changed.
+        """
+        userdata = default
+        for line in self.other:
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "user-data" and Path(unquote(value)).is_absolute():
+                userdata = Path(unquote(value))
+
+        def resolve(value: str) -> str | None:
+            if not value.startswith(USERDATA):
+                return None
+            return str(userdata / value[len(USERDATA):].lstrip("/\\"))
+
+        changed = 0
+        for i, path in enumerate(self.data):
+            if (new := resolve(str(path))) is not None:
+                self.data[i], changed = Path(new), changed + 1
+        for i, line in enumerate(self.other):
+            key, sep, value = line.partition("=")
+            if sep and key.strip() in ("data-local", "config") and (new := resolve(unquote(value))) is not None:
+                self.other[i], changed = f"{key.strip()}={quote(new)}", changed + 1
+        return changed
 
     # -- fallback= values --------------------------------------------------------------------
     @property
